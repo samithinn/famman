@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { buildMonthlySummary, pushToLine } from "@/lib/line-utils";
 
 type LineSource = { userId?: string; type: string };
 type LineMessage = { type: string; text?: string };
@@ -48,36 +49,163 @@ async function replyToLine(replyToken: string, text: string): Promise<void> {
   }
 }
 
-function parseExpense(
+function parseTransaction(
   text: string,
   categories: string[]
-): { amount: number; category: string; note: string } | null {
-  const parts = text.trim().split(/\s+/);
-  if (parts.length < 2) return null;
+): { amount: number; category: string; note: string; type: "expense" | "income" } | null {
+  const trimmed = text.trim();
+  const isIncome = trimmed.startsWith("+");
+  const raw = isIncome ? trimmed.slice(1).trim() : trimmed;
+  const type: "expense" | "income" = isIncome ? "income" : "expense";
+
+  const parts = raw.split(/\s+/);
+  if (parts.length < 1) return null;
   const amount = Number(parts[0]);
   if (!isFinite(amount) || amount <= 0) return null;
-  const catText = parts.slice(1).join(" ");
-  const matched = categories.find(c => c.toLowerCase() === catText.toLowerCase());
-  // If text matches a category exactly → clean entry; otherwise file under Other with text as note
-  return matched
-    ? { amount, category: matched, note: "" }
-    : { amount, category: "Other", note: catText };
+
+  if (parts.length === 1) return { amount, category: "Other", note: "", type };
+
+  const maybeCategory = parts[1];
+  const matched = categories.find(c => c.toLowerCase() === maybeCategory.toLowerCase());
+  if (matched) {
+    return { amount, category: matched, note: parts.slice(2).join(" "), type };
+  }
+  return { amount, category: "Other", note: parts.slice(1).join(" "), type };
+}
+
+async function pickPersonalityResponse(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: ReturnType<typeof serviceClient>,
+  category: string
+): Promise<string> {
+  const FALLBACK = ["บันทึกให้ละจ้า ไม่ต้องบ่นเรื่องเงินเลยนะ!", "จัดไป! บันทึกยอดให้แล้วครับเจ้านาย", "เรียบร้อย! หวังว่าวันนี้จะเหลือเงินกินข้าวนะ"];
+  try {
+    const { data } = await supabase
+      .from("line_responses")
+      .select("category, response_text");
+
+    const responses = (data ?? []) as { category: string; response_text: string }[];
+    if (responses.length === 0) return FALLBACK[Math.floor(Math.random() * FALLBACK.length)];
+
+    const catLower = category.toLowerCase();
+    const matched = responses.filter(
+      r => r.category !== "general" && catLower.includes(r.category.toLowerCase())
+    );
+    const pool = matched.length > 0
+      ? matched
+      : responses.filter(r => r.category === "general");
+
+    if (pool.length === 0) return FALLBACK[Math.floor(Math.random() * FALLBACK.length)];
+    return pool[Math.floor(Math.random() * pool.length)].response_text;
+  } catch {
+    return FALLBACK[Math.floor(Math.random() * FALLBACK.length)];
+  }
+}
+
+function isValidApiKey(provided: string): boolean {
+  const expected = process.env.WEBHOOK_API_KEY ?? "";
+  if (!expected || provided.length !== expected.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
+
+async function handleShortcutRequest(
+  req: NextRequest,
+  body: { userId: string; rawText: string }
+): Promise<NextResponse> {
+  const authHeader = req.headers.get("authorization") ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!isValidApiKey(token)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const supabase = serviceClient();
+  const lineUserId = body.userId;
+  const text = body.rawText.trim();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .eq("line_user_id", lineUserId)
+    .single();
+
+  if (!profile) {
+    return NextResponse.json({ error: "LINE user not linked to any account" }, { status: 404 });
+  }
+
+  const { data: cats } = await supabase
+    .from("categories")
+    .select("name")
+    .eq("user_id", profile.id);
+  const categoryNames = (cats ?? []).map((c: { name: string }) => c.name);
+
+  const parsed = parseTransaction(text, categoryNames);
+  if (!parsed) {
+    await pushToLine(lineUserId, "Format not recognized. Try:\n500 Food & Dining  (expense)\n+5000 Salary  (income)\n(+ prefix = income, no prefix = expense)");
+    return NextResponse.json({ error: "Unrecognized format" }, { status: 400 });
+  }
+
+  const { data: authUser } = await supabase.auth.admin.getUserById(profile.id);
+  const spender =
+    profile.full_name ||
+    authUser?.user?.user_metadata?.full_name ||
+    authUser?.user?.email?.split("@")[0] ||
+    null;
+
+  const date = new Date().toISOString().split("T")[0];
+  const { error: txError } = await supabase
+    .from("transactions")
+    .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id, type: parsed.type }]);
+
+  if (txError) {
+    return NextResponse.json({ error: txError.message }, { status: 500 });
+  }
+
+  const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;
+  const typeLabel = parsed.type === "income" ? "Income +" : "Expense";
+  const personality = await pickPersonalityResponse(supabase, parsed.category);
+  await pushToLine(
+    lineUserId,
+    `${personality}\n\nSaved ✓ [${typeLabel}]\n฿${parsed.amount.toLocaleString()} · ${catLabel}\n${date}`
+  );
+
+  return NextResponse.json({ ok: true });
 }
 
 export async function POST(req: NextRequest) {
   const raw = await req.text();
+
+  let bodyJson: unknown;
+  try {
+    bodyJson = JSON.parse(raw);
+  } catch {
+    bodyJson = null;
+  }
+
+  // iOS Shortcut path: { userId, rawText } with no LINE events
+  if (
+    bodyJson &&
+    typeof bodyJson === "object" &&
+    "userId" in (bodyJson as object) &&
+    "rawText" in (bodyJson as object) &&
+    !("events" in (bodyJson as object))
+  ) {
+    return handleShortcutRequest(req, bodyJson as { userId: string; rawText: string });
+  }
+
+  // --- Standard LINE webhook path ---
   const signature = req.headers.get("x-line-signature") ?? "";
 
   if (!verifySignature(raw, signature)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  let body: { events?: LineEvent[] };
-  try {
-    body = JSON.parse(raw);
-  } catch {
-    return NextResponse.json({ ok: true }); // Return 200 so LINE doesn't retry
-  }
+  if (!bodyJson) return NextResponse.json({ ok: true }); // Return 200 so LINE doesn't retry
+
+  const body = bodyJson as { events?: LineEvent[] };
 
   const events = body.events ?? [];
   if (events.length === 0) return NextResponse.json({ ok: true }); // Verification ping
@@ -117,8 +245,24 @@ export async function POST(req: NextRequest) {
 
       await replyToLine(
         replyToken,
-        "Linked! You can now record expenses by sending:\n500 Food & Dining\n350 Transportation\n1200 Shopping"
+        "Linked! You can now record transactions by sending:\n500 Food & Dining  (expense)\n350 Transportation  (expense)\n+5000 Salary  (income — use + prefix)\n\nSend \"summary\" or \"สรุป\" anytime to see this month's stats 📊"
       );
+      continue;
+    }
+
+    // --- Summary command ---
+    if (/^(summary|สรุป)$/i.test(text)) {
+      const { data: summaryProfile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("line_user_id", lineUserId)
+        .single();
+      if (!summaryProfile) {
+        await replyToLine(replyToken, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+      } else {
+        const summary = await buildMonthlySummary(supabase, summaryProfile.id);
+        await replyToLine(replyToken, summary);
+      }
       continue;
     }
 
@@ -143,11 +287,11 @@ export async function POST(req: NextRequest) {
       .eq("user_id", profile.id);
     const categoryNames = (cats ?? []).map((c: { name: string }) => c.name);
 
-    const parsed = parseExpense(text, categoryNames);
+    const parsed = parseTransaction(text, categoryNames);
     if (!parsed) {
       await replyToLine(
         replyToken,
-        "Format not recognized. Try:\n500 Food & Dining\n350 Transportation\n(amount followed by category)"
+        "Format not recognized. Try:\n500 Food & Dining  (expense)\n+5000 Salary  (income)\n(+ prefix = income, no prefix = expense)"
       );
       continue;
     }
@@ -162,7 +306,7 @@ export async function POST(req: NextRequest) {
     const date = new Date().toISOString().split("T")[0];
     const { error: txError } = await supabase
       .from("transactions")
-      .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id }]);
+      .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id, type: parsed.type }]);
 
     if (txError) {
       await replyToLine(replyToken, "Failed to save. Please try again.");
@@ -170,9 +314,11 @@ export async function POST(req: NextRequest) {
     }
 
     const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;
+    const typeLabel = parsed.type === "income" ? "Income +" : "Expense";
+    const personality = await pickPersonalityResponse(supabase, parsed.category);
     await replyToLine(
       replyToken,
-      `Saved ✓\n฿${parsed.amount.toLocaleString()} · ${catLabel}\n${date}`
+      `${personality}\n\nSaved ✓ [${typeLabel}]\n฿${parsed.amount.toLocaleString()} · ${catLabel}\n${date}`
     );
   }
 
