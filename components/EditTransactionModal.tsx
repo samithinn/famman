@@ -1,80 +1,52 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { X, Loader2 } from "lucide-react";
-import { supabase, Transaction } from "@/lib/supabase";
+import { Transaction } from "@/lib/supabase";
 
 const CATEGORIES = [
   "Food & Dining", "Groceries", "Transportation", "Utilities",
   "Healthcare", "Entertainment", "Shopping", "Education", "Travel", "Other",
 ];
 
-interface AddTransactionModalProps {
-  isOpen: boolean;
+interface EditTransactionModalProps {
+  transaction: Transaction;
   onClose: () => void;
-  onSuccess: (transaction: Transaction) => void;
+  onSuccess: (updated: Transaction) => void;
 }
 
-export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddTransactionModalProps) {
-  const today = new Date().toISOString().split("T")[0];
-  const [form, setForm] = useState({ date: today, amount: "", category: CATEGORIES[0], note: "" });
+export default function EditTransactionModal({ transaction, onClose, onSuccess }: EditTransactionModalProps) {
+  const [form, setForm] = useState({
+    date: transaction.date,
+    amount: String(transaction.amount),
+    category: transaction.category,
+    note: transaction.note ?? "",
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [userRole, setUserRole] = useState<"Husband" | "Wife" | null>(null);
-
-  // Look up the logged-in user's role from the profiles table on open.
-  // Requires a `profiles` table: CREATE TABLE profiles (id UUID PRIMARY KEY REFERENCES auth.users, role TEXT CHECK (role IN ('Husband','Wife')));
-  useEffect(() => {
-    if (!isOpen) return;
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single()
-        .then(({ data }) => {
-          if (data?.role === "Husband" || data?.role === "Wife") setUserRole(data.role);
-        });
-    });
-  }, [isOpen]);
-
-  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!form.amount || isNaN(parseFloat(form.amount)) || parseFloat(form.amount) <= 0) {
+    const amount = parseFloat(form.amount);
+    if (!form.amount || isNaN(amount) || amount <= 0) {
       setError("Please enter a valid amount.");
       return;
     }
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setError("Not authenticated. Please sign in again.");
-      setLoading(false);
+    const res = await fetch(`/api/transactions/${transaction.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: form.date, amount, category: form.category, note: form.note }),
+    });
+    setLoading(false);
+    if (!res.ok) {
+      const body = await res.json();
+      setError(body.error ?? "Failed to update transaction.");
       return;
     }
-
-    const payload: Record<string, unknown> = {
-      date: form.date,
-      amount: parseFloat(form.amount),
-      category: form.category,
-      note: form.note,
-      user_id: user.id,
-    };
-    if (userRole) payload.spender = userRole;
-
-    const { data, error: dbError } = await supabase
-      .from("transactions")
-      .insert([payload])
-      .select()
-      .single();
-
-    setLoading(false);
-    if (dbError) { setError(dbError.message); return; }
-    onSuccess(data as Transaction);
-    setForm({ date: today, amount: "", category: CATEGORIES[0], note: "" });
+    const { transaction: updated } = await res.json();
+    onSuccess(updated as Transaction);
     onClose();
   };
 
@@ -89,10 +61,8 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="text-lg font-black" style={{ color: "#1f2937" }}>Add Expense 💳</h2>
-            <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>
-              {userRole ? `Adding as ${userRole === "Husband" ? "👨 Husband" : "👩 Wife"}` : "Record a new transaction"}
-            </p>
+            <h2 className="text-lg font-black" style={{ color: "#1f2937" }}>Edit Expense ✏️</h2>
+            <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>Update transaction details</p>
           </div>
           <button
             onClick={onClose}
@@ -173,7 +143,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
               opacity: loading ? 0.7 : 1,
             }}
           >
-            {loading ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : "Save Expense 💾"}
+            {loading ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : "Save Changes 💾"}
           </button>
         </form>
       </div>

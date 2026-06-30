@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Download, RefreshCw, AlertCircle } from "lucide-react";
+import { Search, Download, RefreshCw, AlertCircle, Loader2 } from "lucide-react";
 import { supabase, Transaction } from "@/lib/supabase";
 import RecentTransactions from "./RecentTransactions";
+import EditTransactionModal from "./EditTransactionModal";
 
 function exportCSV(transactions: Transaction[]) {
   const headers = ["id", "date", "amount", "category", "note", "spender", "created_at"];
@@ -35,11 +36,18 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
   const [search, setSearch] = useState("");
   const [filterSpender, setFilterSpender] = useState<"All" | "Husband" | "Wife">("All");
 
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
     setError("");
     const { data, error: err } = await supabase
-      .from("transactions").select("*").order("date", { ascending: false });
+      .from("transactions")
+      .select("*")
+      .order("date", { ascending: false });
     if (err) setError(err.message);
     else setTransactions((data as Transaction[]) ?? []);
     setLoading(false);
@@ -47,6 +55,25 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
 
   useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
   useEffect(() => { if (newTransaction) setTransactions((prev) => [newTransaction, ...prev]); }, [newTransaction]);
+
+  const handleEditSuccess = (updated: Transaction) => {
+    setTransactions((prev) => prev.map((t) => t.id === updated.id ? updated : t));
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingTx) return;
+    setDeleteLoading(true);
+    setDeleteError("");
+    const res = await fetch(`/api/transactions/${deletingTx.id}`, { method: "DELETE" });
+    setDeleteLoading(false);
+    if (!res.ok) {
+      const body = await res.json();
+      setDeleteError(body.error ?? "Failed to delete transaction.");
+      return;
+    }
+    setTransactions((prev) => prev.filter((t) => t.id !== deletingTx.id));
+    setDeletingTx(null);
+  };
 
   const filtered = transactions.filter((t) => {
     const matchSearch = !search ||
@@ -139,10 +166,76 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
               <span className="loading loading-spinner loading-md" style={{ color: "#a78bfa" }} />
             </div>
           ) : (
-            <RecentTransactions transactions={filtered} limit={filtered.length} />
+            <RecentTransactions
+              transactions={filtered}
+              limit={filtered.length}
+              onEdit={setEditingTx}
+              onDelete={setDeletingTx}
+            />
           )}
         </div>
       </div>
+
+      {/* Edit modal */}
+      {editingTx && (
+        <EditTransactionModal
+          transaction={editingTx}
+          onClose={() => setEditingTx(null)}
+          onSuccess={handleEditSuccess}
+        />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deletingTx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0"
+            style={{ background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)" }}
+            onClick={() => { setDeletingTx(null); setDeleteError(""); }}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 z-10">
+            <div className="text-center mb-5">
+              <div className="text-4xl mb-3">🗑️</div>
+              <h2 className="text-base font-black" style={{ color: "#1f2937" }}>Delete Transaction?</h2>
+              <p className="text-xs font-semibold mt-2" style={{ color: "#6b7280" }}>
+                <span className="font-extrabold" style={{ color: "#374151" }}>{deletingTx.category}</span>
+                {" · "}฿{deletingTx.amount.toFixed(2)}
+                {deletingTx.note ? ` · "${deletingTx.note}"` : ""}
+              </p>
+              <p className="text-xs font-semibold mt-1" style={{ color: "#9ca3af" }}>This cannot be undone.</p>
+            </div>
+
+            {deleteError && (
+              <p className="text-xs font-semibold px-3 py-2 rounded-xl mb-4" style={{ background: "#fef2f2", color: "#ef4444" }}>
+                {deleteError}
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setDeletingTx(null); setDeleteError(""); }}
+                disabled={deleteLoading}
+                className="flex-1 py-2.5 rounded-xl text-sm font-extrabold border-2 transition-all"
+                style={{ borderColor: "#f3e8ff", color: "#7c3aed", background: "#fff" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={deleteLoading}
+                className="flex-1 py-2.5 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
+                style={{
+                  background: "#ef4444",
+                  boxShadow: "0 4px 12px rgba(239,68,68,0.3)",
+                  opacity: deleteLoading ? 0.7 : 1,
+                }}
+              >
+                {deleteLoading ? <><Loader2 size={14} className="animate-spin" /> Deleting…</> : "Yes, Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

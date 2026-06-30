@@ -1,5 +1,6 @@
 "use client";
 
+import { Pencil, Trash2 } from "lucide-react";
 import { Transaction } from "@/lib/supabase";
 
 const CATEGORY_ICONS: Record<string, { icon: string; bg: string }> = {
@@ -18,6 +19,8 @@ const CATEGORY_ICONS: Record<string, { icon: string; bg: string }> = {
 interface RecentTransactionsProps {
   transactions: Transaction[];
   limit?: number;
+  onEdit?: (tx: Transaction) => void;
+  onDelete?: (tx: Transaction) => void;
 }
 
 function formatDate(dateStr: string) {
@@ -25,8 +28,9 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" });
 }
 
-export default function RecentTransactions({ transactions, limit = 10 }: RecentTransactionsProps) {
+export default function RecentTransactions({ transactions, limit = 10, onEdit, onDelete }: RecentTransactionsProps) {
   const shown = transactions.slice(0, limit);
+  const hasActions = !!(onEdit || onDelete);
 
   if (shown.length === 0) {
     return (
@@ -36,12 +40,15 @@ export default function RecentTransactions({ transactions, limit = 10 }: RecentT
     );
   }
 
+  const baseHeaders = ["CATEGORY", "NOTE", "DATE", "AMOUNT", "WHO"];
+  const headers = hasActions ? [...baseHeaders, "ACTIONS"] : baseHeaders;
+
   return (
     <div className="overflow-x-auto -mx-1">
-      <table className="w-full border-collapse min-w-[480px]">
+      <table className="w-full border-collapse min-w-[520px]">
         <thead>
           <tr style={{ background: "#fafafa", borderBottom: "2px solid #fdf2f8" }}>
-            {["CATEGORY", "NOTE", "DATE", "AMOUNT", "WHO"].map((h, i) => (
+            {headers.map((h, i) => (
               <th
                 key={h}
                 className="py-2.5 text-left font-extrabold"
@@ -50,8 +57,8 @@ export default function RecentTransactions({ transactions, limit = 10 }: RecentT
                   color: "#9ca3af",
                   letterSpacing: "0.8px",
                   paddingLeft: i === 0 ? 16 : 10,
-                  paddingRight: i === 4 ? 16 : 10,
-                  textAlign: i === 3 ? "right" : i === 4 ? "center" : "left",
+                  paddingRight: i === headers.length - 1 ? 16 : 10,
+                  textAlign: h === "AMOUNT" ? "right" : h === "WHO" || h === "ACTIONS" ? "center" : "left",
                 }}
               >
                 {h}
@@ -100,12 +107,12 @@ export default function RecentTransactions({ transactions, limit = 10 }: RecentT
                 {/* Amount */}
                 <td
                   className="py-3 text-sm font-black"
-                  style={{ color: "#1f2937", textAlign: "right", paddingLeft: 10, paddingRight: 16 }}
+                  style={{ color: "#1f2937", textAlign: "right", paddingLeft: 10, paddingRight: 10 }}
                 >
                   ฿{t.amount.toFixed(2)}
                 </td>
                 {/* Who */}
-                <td className="py-3" style={{ textAlign: "center", paddingLeft: 10, paddingRight: 16 }}>
+                <td className="py-3" style={{ textAlign: "center", paddingLeft: 10, paddingRight: hasActions ? 10 : 16 }}>
                   <span
                     className="text-xs font-extrabold px-2 py-0.5 rounded-full"
                     style={{
@@ -116,6 +123,33 @@ export default function RecentTransactions({ transactions, limit = 10 }: RecentT
                     {isWife ? "👩 Wife" : "👨 Hub"}
                   </span>
                 </td>
+                {/* Actions */}
+                {hasActions && (
+                  <td className="py-3" style={{ textAlign: "center", paddingLeft: 10, paddingRight: 16 }}>
+                    <div className="flex items-center justify-center gap-1.5">
+                      {onEdit && (
+                        <button
+                          onClick={() => onEdit(t)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                          style={{ background: "#f3e8ff", color: "#7c3aed" }}
+                          title="Edit"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button
+                          onClick={() => onDelete(t)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                          style={{ background: "#fef2f2", color: "#ef4444" }}
+                          title="Delete"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                )}
               </tr>
             );
           })}
