@@ -41,7 +41,7 @@ export default function RecentTransactions({ transactions, limit = 10, onEdit, o
     );
   }
 
-  const baseHeaders = ["CATEGORY", "NOTE", "DATE", "AMOUNT"];
+  const baseHeaders = ["CATEGORY", "NOTE", "SPENDER", "DATE", "AMOUNT"];
   const headers = hasActions ? [...baseHeaders, "ACTIONS"] : baseHeaders;
 
   return (
@@ -96,6 +96,13 @@ export default function RecentTransactions({ transactions, limit = 10, onEdit, o
                   style={{ color: "#6b7280", paddingLeft: 10, paddingRight: 10 }}
                 >
                   {t.note || "—"}
+                </td>
+                {/* Spender */}
+                <td
+                  className="py-3 text-xs font-bold"
+                  style={{ color: "#7c3aed", paddingLeft: 10, paddingRight: 10 }}
+                >
+                  {t.spender || "—"}
                 </td>
                 {/* Date */}
                 <td

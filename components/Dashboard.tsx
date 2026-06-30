@@ -49,6 +49,7 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
     return { value: `${now.getFullYear()}-${String(i + 1).padStart(2, "0")}`, label: d.toLocaleDateString("en-US", { month: "long", year: "numeric" }) };
   });
   const [selectedMonth, setSelectedMonth] = useState(months[now.getMonth()].value);
+  const [selectedSpender, setSelectedSpender] = useState("all");
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -81,8 +82,10 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
   }, []);
 
   const { start, end } = getCurrentMonthRange();
+  const spenders = Array.from(new Set(transactions.map((t) => t.spender).filter(Boolean)));
   const monthlyTx = transactions.filter((t) =>
-    t.date >= `${selectedMonth}-01` && t.date <= `${selectedMonth}-31`
+    t.date >= `${selectedMonth}-01` && t.date <= `${selectedMonth}-31` &&
+    (selectedSpender === "all" || t.spender === selectedSpender)
   );
   const currentMonthTx = transactions.filter((t) => t.date >= start && t.date <= end);
 
@@ -125,6 +128,18 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
           >
             {months.map((m) => (
               <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+          {/* Spender filter */}
+          <select
+            value={selectedSpender}
+            onChange={(e) => setSelectedSpender(e.target.value)}
+            className="text-xs font-bold rounded-xl px-3 py-2 cursor-pointer outline-none"
+            style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+          >
+            <option value="all">All spenders</option>
+            {spenders.map((s) => (
+              <option key={s} value={s}>{s}</option>
             ))}
           </select>
           {/* Add button */}
