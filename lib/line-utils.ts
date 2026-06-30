@@ -1,6 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
-
-type SupabaseClient = ReturnType<typeof createClient>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import { type SupabaseClient } from "@supabase/supabase-js";
 
 const THAI_MONTHS = [
   "มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
@@ -12,7 +11,8 @@ function fmt(n: number): string {
 }
 
 export async function buildMonthlySummary(
-  supabase: SupabaseClient,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, any, any>,
   userId: string
 ): Promise<string> {
   const now = new Date();
