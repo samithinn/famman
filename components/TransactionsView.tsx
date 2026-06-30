@@ -34,7 +34,6 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [filterSpender, setFilterSpender] = useState("All");
 
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
@@ -75,15 +74,11 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
     setDeletingTx(null);
   };
 
-  const uniqueSpenders = Array.from(new Set(transactions.map((t) => t.spender).filter(Boolean))).sort();
-
-  const filtered = transactions.filter((t) => {
-    const matchSearch = !search ||
-      t.note?.toLowerCase().includes(search.toLowerCase()) ||
-      t.category.toLowerCase().includes(search.toLowerCase());
-    const matchSpender = filterSpender === "All" || t.spender === filterSpender;
-    return matchSearch && matchSpender;
-  });
+  const filtered = transactions.filter((t) =>
+    !search ||
+    t.note?.toLowerCase().includes(search.toLowerCase()) ||
+    t.category.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -126,9 +121,9 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
           </div>
         )}
 
-        {/* Filters */}
-        <div className="bg-white rounded-2xl p-4 flex flex-col sm:flex-row gap-3" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-          <div className="relative flex-1">
+        {/* Search */}
+        <div className="bg-white rounded-2xl p-4" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+          <div className="relative">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#c4b5fd" }} />
             <input
               type="text"
@@ -138,32 +133,6 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
               className="w-full rounded-xl pl-8 pr-3 py-2 text-sm font-semibold outline-none"
               style={{ border: "2px solid #f3e8ff", color: "#374151" }}
             />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {(["All", ...uniqueSpenders]).map((s, i) => {
-              const activeColors = [
-                { background: "#f3e8ff", borderColor: "#c4b5fd", color: "#7c3aed" },
-                { background: "#dbeafe", borderColor: "#93c5fd", color: "#1e40af" },
-                { background: "#fce7f3", borderColor: "#f9a8d4", color: "#be185d" },
-                { background: "#dcfce7", borderColor: "#86efac", color: "#15803d" },
-                { background: "#fef3c7", borderColor: "#fde68a", color: "#92400e" },
-                { background: "#f5f3ff", borderColor: "#c4b5fd", color: "#6d28d9" },
-              ];
-              return (
-                <button
-                  key={s}
-                  onClick={() => setFilterSpender(s)}
-                  className="flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-extrabold border-2 transition-all"
-                  style={
-                    filterSpender === s
-                      ? activeColors[i % activeColors.length]
-                      : { background: "#f9fafb", borderColor: "#f3f4f6", color: "#9ca3af" }
-                  }
-                >
-                  {s}
-                </button>
-              );
-            })}
           </div>
         </div>
 

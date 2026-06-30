@@ -71,3 +71,12 @@ CROSS JOIN (VALUES
 WHERE NOT EXISTS (
   SELECT 1 FROM categories c WHERE c.user_id = u.id AND c.name = v.name
 );
+
+-- 9. Back-fill old Husband/Wife spender values to the user's actual profile name
+UPDATE transactions t
+SET spender = COALESCE(
+  (SELECT p.full_name FROM profiles p WHERE p.id = t.user_id AND p.full_name IS NOT NULL),
+  split_part((SELECT u.email FROM auth.users u WHERE u.id = t.user_id), '@', 1),
+  'Unknown'
+)
+WHERE t.spender IN ('Husband', 'Wife');

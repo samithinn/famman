@@ -41,7 +41,6 @@ export async function POST(req: NextRequest) {
   const amount = Number(body.amount);
   const category = body.category;
   const note = body.note;
-  const spender = body.spender;
 
   if (!isFinite(amount) || amount <= 0) {
     return NextResponse.json({ error: "amount must be a positive number" }, { status: 400 });
@@ -49,14 +48,20 @@ export async function POST(req: NextRequest) {
   if (typeof category !== "string" || !category.trim()) {
     return NextResponse.json({ error: "category is required" }, { status: 400 });
   }
-  if (spender !== "Husband" && spender !== "Wife") {
-    return NextResponse.json({ error: "spender must be 'Husband' or 'Wife'" }, { status: 400 });
-  }
 
   const user_id = process.env.WEBHOOK_USER_ID;
   if (!user_id) {
     return NextResponse.json({ error: "Server misconfiguration: WEBHOOK_USER_ID not set" }, { status: 500 });
   }
+
+  // Resolve spender from profile so old automations don't need to change
+  const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user_id).single();
+  const { data: authUser } = await supabase.auth.admin.getUserById(user_id);
+  const spender =
+    profile?.full_name ||
+    authUser?.user?.user_metadata?.full_name ||
+    authUser?.user?.email?.split("@")[0] ||
+    null;
 
   const date = new Date().toISOString().split("T")[0];
 

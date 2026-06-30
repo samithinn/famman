@@ -28,19 +28,10 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" });
 }
 
-const BADGE_COLORS = [
-  { bg: "#dbeafe", color: "#1e40af" },
-  { bg: "#fce7f3", color: "#be185d" },
-  { bg: "#dcfce7", color: "#15803d" },
-  { bg: "#fef3c7", color: "#92400e" },
-  { bg: "#f5f3ff", color: "#6d28d9" },
-  { bg: "#fef2f2", color: "#b91c1c" },
-];
 
 export default function RecentTransactions({ transactions, limit = 10, onEdit, onDelete }: RecentTransactionsProps) {
   const shown = transactions.slice(0, limit);
   const hasActions = !!(onEdit || onDelete);
-  const uniqueSpenders = Array.from(new Set(transactions.map((t) => t.spender).filter(Boolean))).sort();
 
   if (shown.length === 0) {
     return (
@@ -50,7 +41,7 @@ export default function RecentTransactions({ transactions, limit = 10, onEdit, o
     );
   }
 
-  const baseHeaders = ["CATEGORY", "NOTE", "DATE", "AMOUNT", "WHO"];
+  const baseHeaders = ["CATEGORY", "NOTE", "DATE", "AMOUNT"];
   const headers = hasActions ? [...baseHeaders, "ACTIONS"] : baseHeaders;
 
   return (
@@ -68,7 +59,7 @@ export default function RecentTransactions({ transactions, limit = 10, onEdit, o
                   letterSpacing: "0.8px",
                   paddingLeft: i === 0 ? 16 : 10,
                   paddingRight: i === headers.length - 1 ? 16 : 10,
-                  textAlign: h === "AMOUNT" ? "right" : h === "WHO" || h === "ACTIONS" ? "center" : "left",
+                  textAlign: h === "AMOUNT" ? "right" : h === "ACTIONS" ? "center" : "left",
                 }}
               >
                 {h}
@@ -119,18 +110,6 @@ export default function RecentTransactions({ transactions, limit = 10, onEdit, o
                   style={{ color: "#1f2937", textAlign: "right", paddingLeft: 10, paddingRight: 10 }}
                 >
                   ฿{t.amount.toFixed(2)}
-                </td>
-                {/* Who */}
-                <td className="py-3" style={{ textAlign: "center", paddingLeft: 10, paddingRight: hasActions ? 10 : 16 }}>
-                  {t.spender && (() => {
-                    const idx = uniqueSpenders.indexOf(t.spender);
-                    const { bg, color } = BADGE_COLORS[idx % BADGE_COLORS.length] ?? BADGE_COLORS[0];
-                    return (
-                      <span className="text-xs font-extrabold px-2 py-0.5 rounded-full" style={{ background: bg, color }}>
-                        {t.spender}
-                      </span>
-                    );
-                  })()}
                 </td>
                 {/* Actions */}
                 {hasActions && (
