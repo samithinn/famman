@@ -16,9 +16,10 @@ export async function PUT(
   if (!body.date || !body.category)
     return NextResponse.json({ error: "date and category are required" }, { status: 400 });
 
+  const type = body.type === "income" ? "income" : "expense";
   const { data, error } = await supabase
     .from("transactions")
-    .update({ date: body.date, amount, category: body.category, note: body.note ?? "" })
+    .update({ date: body.date, amount, category: body.category, note: body.note ?? "", type })
     .eq("id", params.id)
     .eq("user_id", user.id)
     .select();

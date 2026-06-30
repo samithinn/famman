@@ -29,4 +29,5 @@ export type Transaction = {
   note: string;
   spender: string;
   user_id: string;
+  type: "expense" | "income";
 };

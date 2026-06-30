@@ -114,9 +114,14 @@ export default function RecentTransactions({ transactions, limit = 10, onEdit, o
                 {/* Amount */}
                 <td
                   className="py-3 text-sm font-black"
-                  style={{ color: "#1f2937", textAlign: "right", paddingLeft: 10, paddingRight: 10 }}
+                  style={{
+                    color: t.type === "income" ? "#10b981" : "#1f2937",
+                    textAlign: "right",
+                    paddingLeft: 10,
+                    paddingRight: 10,
+                  }}
                 >
-                  ฿{t.amount.toFixed(2)}
+                  {t.type === "income" ? "+" : ""}฿{t.amount.toFixed(2)}
                 </td>
                 {/* Actions */}
                 {hasActions && (

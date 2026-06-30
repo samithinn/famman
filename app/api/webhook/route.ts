@@ -36,11 +36,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  console.log("Received payload:", JSON.stringify(body));
-
   const amount = Number(body.amount);
   const category = body.category;
   const note = body.note;
+  const type = body.type === "income" ? "income" : "expense";
 
   if (!isFinite(amount) || amount <= 0) {
     return NextResponse.json({ error: "amount must be a positive number" }, { status: 400 });
@@ -67,7 +66,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from("transactions")
-    .insert([{ date, amount, category, note: note ?? "", spender, user_id }])
+    .insert([{ date, amount, category, note: note ?? "", spender, user_id, type }])
     .select()
     .single();
 

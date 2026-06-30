@@ -16,6 +16,7 @@ interface AddTransactionModalProps {
 }
 
 type Mode = "manual" | "csv";
+type TxType = "expense" | "income";
 type CSVRow = { date: string; amount: string; category: string; note: string };
 
 function parseCSV(text: string, allowedCategories: string[]): { rows: CSVRow[]; errors: string[] } {
@@ -67,6 +68,7 @@ async function resolveSpender() {
 export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddTransactionModalProps) {
   const today = new Date().toISOString().split("T")[0];
   const [mode, setMode] = useState<Mode>("manual");
+  const [txType, setTxType] = useState<TxType>("expense");
   const [form, setForm] = useState({ date: today, amount: "", category: "", note: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -83,6 +85,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
   useEffect(() => {
     if (!isOpen) return;
     setMode("manual");
+    setTxType("expense");
     setError("");
     setCsvRows([]);
     setCsvErrors([]);
@@ -128,7 +131,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
 
     const { data, error: dbError } = await supabase
       .from("transactions")
-      .insert([{ date: form.date, amount: parseFloat(form.amount), category: form.category, note: form.note, user_id: user.id, spender }])
+      .insert([{ date: form.date, amount: parseFloat(form.amount), category: form.category, note: form.note, user_id: user.id, spender, type: txType }])
       .select()
       .single();
 
@@ -194,7 +197,9 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-black" style={{ color: "#1f2937" }}>Add Expense 💳</h2>
+            <h2 className="text-lg font-black" style={{ color: "#1f2937" }}>
+              {txType === "income" ? "Add Income 💰" : "Add Expense 💳"}
+            </h2>
             <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>
               {username ? `Adding as ${username}` : "Record a new transaction"}
             </p>
@@ -206,6 +211,29 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
           >
             <X size={15} style={{ color: "#7c3aed" }} />
           </button>
+        </div>
+
+        {/* Expense / Income toggle */}
+        <div className="flex rounded-xl overflow-hidden mb-3" style={{ border: "2px solid #f3e8ff" }}>
+          {(["expense", "income"] as TxType[]).map(t => (
+            <button
+              key={t}
+              onClick={() => setTxType(t)}
+              className="flex-1 py-2 text-xs font-extrabold transition-all"
+              style={
+                txType === t
+                  ? {
+                      background: t === "income"
+                        ? "linear-gradient(135deg, #10b981, #059669)"
+                        : "linear-gradient(135deg, #ec4899, #8b5cf6)",
+                      color: "#fff",
+                    }
+                  : { color: "#7c3aed", background: "transparent" }
+              }
+            >
+              {t === "income" ? "💰 Income" : "💳 Expense"}
+            </button>
+          ))}
         </div>
 
         {/* Mode tabs */}
@@ -292,12 +320,16 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
               disabled={loading || catLoading}
               className="w-full py-3 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
               style={{
-                background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
-                boxShadow: "0 4px 14px rgba(236,72,153,0.35)",
+                background: txType === "income"
+                  ? "linear-gradient(135deg, #10b981, #059669)"
+                  : "linear-gradient(135deg, #ec4899, #8b5cf6)",
+                boxShadow: txType === "income"
+                  ? "0 4px 14px rgba(16,185,129,0.35)"
+                  : "0 4px 14px rgba(236,72,153,0.35)",
                 opacity: loading || catLoading ? 0.7 : 1,
               }}
             >
-              {loading ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : "Save Expense 💾"}
+              {loading ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : txType === "income" ? "Save Income 💾" : "Save Expense 💾"}
             </button>
           </form>
         ) : (

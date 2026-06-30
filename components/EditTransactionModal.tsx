@@ -11,6 +11,7 @@ interface EditTransactionModalProps {
 }
 
 export default function EditTransactionModal({ transaction, onClose, onSuccess }: EditTransactionModalProps) {
+  const [txType, setTxType] = useState<"expense" | "income">(transaction.type ?? "expense");
   const [form, setForm] = useState({
     date: transaction.date,
     amount: String(transaction.amount),
@@ -50,7 +51,7 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
     const res = await fetch(`/api/transactions/${transaction.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date: form.date, amount, category: form.category, note: form.note }),
+      body: JSON.stringify({ date: form.date, amount, category: form.category, note: form.note, type: txType }),
     });
     setLoading(false);
     if (!res.ok) {
@@ -84,6 +85,30 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
           >
             <X size={15} style={{ color: "#7c3aed" }} />
           </button>
+        </div>
+
+        {/* Expense / Income toggle */}
+        <div className="flex rounded-xl overflow-hidden mb-5" style={{ border: "2px solid #f3e8ff" }}>
+          {(["expense", "income"] as const).map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTxType(t)}
+              className="flex-1 py-2 text-xs font-extrabold transition-all"
+              style={
+                txType === t
+                  ? {
+                      background: t === "income"
+                        ? "linear-gradient(135deg, #10b981, #059669)"
+                        : "linear-gradient(135deg, #ec4899, #8b5cf6)",
+                      color: "#fff",
+                    }
+                  : { color: "#7c3aed", background: "transparent" }
+              }
+            >
+              {t === "income" ? "💰 Income" : "💳 Expense"}
+            </button>
+          ))}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

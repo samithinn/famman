@@ -89,18 +89,25 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
   );
   const currentMonthTx = transactions.filter((t) => t.date >= start && t.date <= end);
 
-  const totalThisMonth = monthlyTx.reduce((s, t) => s + t.amount, 0);
-  const budgetLeft = monthlyBudget - currentMonthTx.reduce((s, t) => s + t.amount, 0);
+  const monthlyExpenses = monthlyTx.filter(t => (t.type ?? "expense") === "expense");
+  const monthlyIncome = monthlyTx.filter(t => t.type === "income");
+  const totalSpentThisMonth = monthlyExpenses.reduce((s, t) => s + t.amount, 0);
+  const totalIncomeThisMonth = monthlyIncome.reduce((s, t) => s + t.amount, 0);
+  const currentMonthExpenses = currentMonthTx.filter(t => (t.type ?? "expense") === "expense");
+  const currentMonthIncomeTx = currentMonthTx.filter(t => t.type === "income");
+  const budgetLeft = monthlyBudget
+    - currentMonthExpenses.reduce((s, t) => s + t.amount, 0)
+    + currentMonthIncomeTx.reduce((s, t) => s + t.amount, 0);
   const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const avgPerDay = totalThisMonth / days;
+  const avgPerDay = totalSpentThisMonth / days;
 
   const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const prevStart = prevMonth.toISOString().split("T")[0];
   const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split("T")[0];
   const prevTotal = transactions
-    .filter((t) => t.date >= prevStart && t.date <= prevEnd)
+    .filter((t) => t.date >= prevStart && t.date <= prevEnd && (t.type ?? "expense") === "expense")
     .reduce((s, t) => s + t.amount, 0);
-  const changePct = prevTotal > 0 ? ((totalThisMonth - prevTotal) / prevTotal) * 100 : 0;
+  const changePct = prevTotal > 0 ? ((totalSpentThisMonth - prevTotal) / prevTotal) * 100 : 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -115,7 +122,7 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
             Monthly Report 📈
           </h1>
           <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>
-            {months.find((m) => m.value === selectedMonth)?.label} · {monthlyTx.length} transactions recorded
+            {months.find((m) => m.value === selectedMonth)?.label} · {monthlyTx.length} transactions ({monthlyExpenses.length} expenses, {monthlyIncome.length} income)
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -187,25 +194,25 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
 
         {/* 4 stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Total */}
+          {/* Total Spent */}
           <div className="stat-card">
-            <p className="text-xs font-extrabold mb-2" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>TOTAL THIS MONTH</p>
-            <p className="text-2xl font-black" style={{ color: "#1f2937", letterSpacing: "-1px" }}>฿{totalThisMonth.toFixed(2)}</p>
+            <p className="text-xs font-extrabold mb-2" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>TOTAL SPENT</p>
+            <p className="text-2xl font-black" style={{ color: "#1f2937", letterSpacing: "-1px" }}>฿{totalSpentThisMonth.toFixed(2)}</p>
             <p className="text-xs font-extrabold mt-1" style={{ color: changePct <= 0 ? "#10b981" : "#ef4444" }}>
               {changePct <= 0 ? "↓" : "↑"} {Math.abs(changePct).toFixed(1)}% vs last month
             </p>
           </div>
-          {/* Transactions */}
+          {/* Total Income */}
           <div className="stat-card">
-            <p className="text-xs font-extrabold mb-2" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>TRANSACTIONS</p>
-            <p className="text-2xl font-black" style={{ color: "#1f2937" }}>{monthlyTx.length}</p>
-            <p className="text-xs font-semibold mt-1" style={{ color: "#9ca3af" }}>this month total</p>
+            <p className="text-xs font-extrabold mb-2" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>TOTAL INCOME</p>
+            <p className="text-2xl font-black" style={{ color: "#10b981", letterSpacing: "-1px" }}>฿{totalIncomeThisMonth.toFixed(2)}</p>
+            <p className="text-xs font-semibold mt-1" style={{ color: "#9ca3af" }}>{monthlyIncome.length} income entries</p>
           </div>
           {/* Avg per day */}
           <div className="stat-card">
-            <p className="text-xs font-extrabold mb-2" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>AVG PER DAY</p>
+            <p className="text-xs font-extrabold mb-2" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>AVG/DAY (SPENT)</p>
             <p className="text-2xl font-black" style={{ color: "#1f2937" }}>฿{avgPerDay.toFixed(0)}</p>
-            <p className="text-xs font-semibold mt-1" style={{ color: "#9ca3af" }}>daily average</p>
+            <p className="text-xs font-semibold mt-1" style={{ color: "#9ca3af" }}>daily spending avg</p>
           </div>
           {/* Budget Left — gradient */}
           <div

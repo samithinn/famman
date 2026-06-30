@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User } from "lucide-react";
+import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User, MessageSquare } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 type Category = { id: string; name: string };
 type Role = "admin" | "user";
 type UserEntry = { id: string; email: string; full_name: string; role: Role };
+type LineResponse = { id: string; category: string; response_text: string };
 
 export default function SettingsView() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -40,6 +41,18 @@ export default function SettingsView() {
   const [changingRole, setChangingRole] = useState<string | null>(null);
   const [usersError, setUsersError] = useState("");
 
+  // Admin: LINE bot responses
+  const [lineResponses, setLineResponses] = useState<LineResponse[]>([]);
+  const [lineRespLoading, setLineRespLoading] = useState(false);
+  const [lineRespError, setLineRespError] = useState("");
+  const [newRespCategory, setNewRespCategory] = useState("");
+  const [newRespText, setNewRespText] = useState("");
+  const [addingResp, setAddingResp] = useState(false);
+  const [editingRespId, setEditingRespId] = useState<string | null>(null);
+  const [editRespCategory, setEditRespCategory] = useState("");
+  const [editRespText, setEditRespText] = useState("");
+  const [deletingRespId, setDeletingRespId] = useState<string | null>(null);
+
   useEffect(() => {
     fetchProfile();
     fetchCategories();
@@ -58,7 +71,10 @@ export default function SettingsView() {
     if (data?.monthly_budget) setBudget(String(data.monthly_budget));
     const role = (data?.role ?? "user") as Role;
     setUserRole(role);
-    if (role === "admin") fetchUsers();
+    if (role === "admin") {
+      fetchUsers();
+      fetchLineResponses();
+    }
   }
 
   async function fetchLineStatus() {
@@ -206,6 +222,81 @@ export default function SettingsView() {
     setDeletingId(null);
   }
 
+  async function fetchLineResponses() {
+    setLineRespLoading(true);
+    setLineRespError("");
+    const res = await fetch("/api/admin/line-responses");
+    if (!res.ok) {
+      const body = await res.json();
+      setLineRespError(body.error ?? "Failed to load responses.");
+      setLineRespLoading(false);
+      return;
+    }
+    const { responses } = await res.json();
+    setLineResponses(responses);
+    setLineRespLoading(false);
+  }
+
+  async function addLineResponse() {
+    const cat = newRespCategory.trim();
+    const txt = newRespText.trim();
+    if (!cat || !txt) return;
+    setAddingResp(true);
+    setLineRespError("");
+    const res = await fetch("/api/admin/line-responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category: cat, response_text: txt }),
+    });
+    if (!res.ok) {
+      const body = await res.json();
+      setLineRespError(body.error ?? "Failed to add response.");
+      setAddingResp(false);
+      return;
+    }
+    const { response } = await res.json();
+    setLineResponses(prev => [...prev, response].sort((a, b) => a.category.localeCompare(b.category)));
+    setNewRespCategory("");
+    setNewRespText("");
+    setAddingResp(false);
+  }
+
+  async function saveLineRespEdit(id: string) {
+    const cat = editRespCategory.trim();
+    const txt = editRespText.trim();
+    if (!cat || !txt) return;
+    setLineRespError("");
+    const res = await fetch("/api/admin/line-responses", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, category: cat, response_text: txt }),
+    });
+    if (!res.ok) {
+      const body = await res.json();
+      setLineRespError(body.error ?? "Failed to update response.");
+      return;
+    }
+    setLineResponses(prev =>
+      prev.map(r => r.id === id ? { ...r, category: cat, response_text: txt } : r)
+        .sort((a, b) => a.category.localeCompare(b.category))
+    );
+    setEditingRespId(null);
+  }
+
+  async function deleteLineResponse(id: string) {
+    setDeletingRespId(id);
+    setLineRespError("");
+    const res = await fetch(`/api/admin/line-responses?id=${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json();
+      setLineRespError(body.error ?? "Failed to delete response.");
+      setDeletingRespId(null);
+      return;
+    }
+    setLineResponses(prev => prev.filter(r => r.id !== id));
+    setDeletingRespId(null);
+  }
+
   const roleBadge = (role: Role) => (
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold"
@@ -305,6 +396,138 @@ export default function SettingsView() {
                             <option value="admin">admin</option>
                           </select>
                         )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Admin: LINE Bot Personality */}
+        {userRole === "admin" && (
+          <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+            <div className="flex items-center gap-2 mb-1">
+              <MessageSquare size={15} style={{ color: "#06c755" }} />
+              <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>LINE Bot Personality</h2>
+            </div>
+            <p className="text-xs font-semibold mb-4" style={{ color: "#9ca3af" }}>
+              Sarcastic replies sent after each transaction. Category is a keyword matched against the transaction category (e.g. <code className="font-bold">coffee</code>, <code className="font-bold">food</code>, <code className="font-bold">fuel</code>). Use <code className="font-bold">general</code> as fallback.
+            </p>
+
+            {/* Add form */}
+            <div className="space-y-2 mb-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Category keyword…"
+                  value={newRespCategory}
+                  onChange={e => setNewRespCategory(e.target.value)}
+                  className="w-28 rounded-xl px-3 py-2 text-xs font-semibold outline-none flex-shrink-0"
+                  style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                />
+                <input
+                  type="text"
+                  placeholder="Response message…"
+                  value={newRespText}
+                  onChange={e => setNewRespText(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && addLineResponse()}
+                  className="flex-1 rounded-xl px-3 py-2 text-xs font-semibold outline-none"
+                  style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                />
+                <button
+                  onClick={addLineResponse}
+                  disabled={addingResp || !newRespCategory.trim() || !newRespText.trim()}
+                  className="px-3 py-2 rounded-xl text-xs font-extrabold text-white flex items-center gap-1 flex-shrink-0"
+                  style={{
+                    background: "linear-gradient(135deg, #06c755, #00b248)",
+                    opacity: addingResp || !newRespCategory.trim() || !newRespText.trim() ? 0.5 : 1,
+                  }}
+                >
+                  {addingResp ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} /> Add</>}
+                </button>
+              </div>
+            </div>
+
+            {lineRespError && (
+              <p className="text-xs font-semibold px-3 py-2 rounded-xl mb-3" style={{ background: "#fef2f2", color: "#ef4444" }}>
+                {lineRespError}
+              </p>
+            )}
+
+            {lineRespLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <span className="loading loading-spinner loading-md" style={{ color: "#a78bfa" }} />
+              </div>
+            ) : lineResponses.length === 0 ? (
+              <p className="text-xs font-semibold text-center py-4" style={{ color: "#9ca3af" }}>
+                No responses yet. Add one above.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {lineResponses.map(r => (
+                  <div
+                    key={r.id}
+                    className="rounded-xl px-3 py-2.5"
+                    style={{ background: "#fafafa", border: "1px solid #f3e8ff" }}
+                  >
+                    {editingRespId === r.id ? (
+                      <div className="space-y-1.5">
+                        <div className="flex gap-2">
+                          <input
+                            autoFocus
+                            type="text"
+                            value={editRespCategory}
+                            onChange={e => setEditRespCategory(e.target.value)}
+                            className="w-28 rounded-lg px-2 py-1.5 text-xs font-semibold outline-none flex-shrink-0"
+                            style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                          />
+                          <input
+                            type="text"
+                            value={editRespText}
+                            onChange={e => setEditRespText(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") saveLineRespEdit(r.id);
+                              if (e.key === "Escape") setEditingRespId(null);
+                            }}
+                            className="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold outline-none"
+                            style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                          />
+                          <button onClick={() => saveLineRespEdit(r.id)} className="p-1 rounded-lg flex-shrink-0" style={{ color: "#10b981" }}>
+                            <Check size={14} />
+                          </button>
+                          <button onClick={() => setEditingRespId(null)} className="p-1 rounded-lg flex-shrink-0" style={{ color: "#9ca3af" }}>
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-2">
+                        <span
+                          className="text-xs font-extrabold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
+                          style={{ background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0" }}
+                        >
+                          {r.category}
+                        </span>
+                        <span className="flex-1 text-xs font-semibold leading-relaxed" style={{ color: "#374151" }}>
+                          {r.response_text}
+                        </span>
+                        <button
+                          onClick={() => { setEditingRespId(r.id); setEditRespCategory(r.category); setEditRespText(r.response_text); }}
+                          className="p-1 rounded-lg flex-shrink-0"
+                          style={{ color: "#7c3aed" }}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => deleteLineResponse(r.id)}
+                          disabled={deletingRespId === r.id}
+                          className="p-1 rounded-lg flex-shrink-0"
+                          style={{ color: "#ef4444" }}
+                        >
+                          {deletingRespId === r.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                        </button>
                       </div>
                     )}
                   </div>
