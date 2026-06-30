@@ -200,18 +200,42 @@ function buildSuccessMessage(personality: string, amount: number, catLabel: stri
   return `${personality} ${summary}`;
 }
 
-function extractRecipientName(rawText: string): string | null {
+function extractRecipientName(rawText: string, senderName: string | null): string | null {
   const lines = rawText.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
+
+  // Priority 1: explicit "ผู้รับโอน" label — inline or next line
+  for (let i = 0; i < lines.length; i++) {
+    const inlineMatch = lines[i].match(/ผู้รับโอน[:\s]+(.+)/);
+    if (inlineMatch) return inlineMatch[1].trim();
+    if (lines[i] === "ผู้รับโอน" && lines[i + 1]) return lines[i + 1].trim();
+  }
+
+  // Priority 2: line after "ไปยัง" that has a Thai honorific
+  for (let i = 0; i < lines.length; i++) {
+    if (/^ไปยัง/.test(lines[i]) && lines[i + 1]) {
+      const next = lines[i + 1].trim();
+      if (/^(นาย|นาง(?:สาว)?)/.test(next)) return next;
+    }
+  }
+
+  const isSender = (line: string) =>
+    senderName ? line === senderName || line.includes(senderName) : false;
+
+  // Priority 3: Thai honorifics, excluding the sender
   for (const line of lines) {
-    // Thai honorifics: นาย / นาง / นางสาว
-    if (/^(นาย|นาง(?:สาว)?)\s*[฀-๿a-zA-Z]/.test(line)) return line;
-    // Company / partnership
+    if (/^(นาย|นาง(?:สาว)?)\s*[฀-๿a-zA-Z]/.test(line) && !isSender(line)) return line;
+  }
+
+  // Priority 4: company / partnership
+  for (const line of lines) {
     if (/^(บริษัท|ห้างหุ้นส่วน)/.test(line)) return line;
   }
-  // All-caps English merchant name (e.g. "NALINEE RESTAURANT")
+
+  // Priority 5: ALL-CAPS English merchant name
   for (const line of lines) {
     if (/^[A-Z][A-Z\s]{2,}$/.test(line)) return line;
   }
+
   return null;
 }
 
@@ -222,9 +246,8 @@ function buildShortcutReply(
   recipientName: string | null,
   isOther: boolean
 ): string {
-  let msg = `${personality}\nยอด: ฿${amount.toLocaleString()}\n`;
-  if (recipientName) msg += `ร้าน/คนโอน: ${recipientName}\n`;
-  msg += `หมวด: ${category}`;
+  const recipient = recipientName ?? "ร้านค้า/ผู้รับ";
+  let msg = `${personality}\nยอด: ฿${amount.toLocaleString()}\nโอนให้: ${recipient}\nหมวด: ${category}`;
   if (isOther) msg += `\n💡 ยังจัดหมวดไม่ได้ แก้ที่เว็บได้เลยนะ!`;
   return msg;
 }
@@ -331,7 +354,7 @@ async function handleShortcutRequest(
   }
 
   const personality = await pickPersonalityResponse(supabase, parsed.category, profile.id, profile.line_last_response ?? null);
-  const recipientName = extractRecipientName(text);
+  const recipientName = extractRecipientName(text, spender);
   const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, parsed.category === "Other");
   await pushToLine(lineUserId, reply);
 
@@ -389,10 +412,9 @@ export async function POST(req: NextRequest) {
   for (const event of events) {
     if (event.type !== "message" || event.message?.type !== "text") continue;
     const lineUserId = event.source?.userId;
-    const replyToken = event.replyToken;
     const text = (event.message.text ?? "").trim();
 
-    if (!lineUserId || !replyToken || !text) continue;
+    if (!lineUserId || !text) continue;
 
     // --- Account linking ---
     if (/^link\s+/i.test(text)) {
@@ -404,11 +426,11 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!profile) {
-        await replyToLine(replyToken, "Invalid link code. Generate a new one in the app → Settings → Connect LINE.");
+        await pushToLine(lineUserId, "Invalid link code. Generate a new one in the app → Settings → Connect LINE.");
         continue;
       }
       if (new Date(profile.line_link_token_expires_at) < new Date()) {
-        await replyToLine(replyToken, "Link code has expired. Please generate a new one in the app.");
+        await pushToLine(lineUserId, "Link code has expired. Please generate a new one in the app.");
         continue;
       }
 
@@ -417,8 +439,8 @@ export async function POST(req: NextRequest) {
         .update({ line_user_id: lineUserId, line_link_token: null, line_link_token_expires_at: null })
         .eq("id", profile.id);
 
-      await replyToLine(
-        replyToken,
+      await pushToLine(
+        lineUserId,
         "Linked! You can now record transactions by sending:\n500 Food & Dining  (expense)\n350 Transportation  (expense)\n+5000 Salary  (income — use + prefix)\n\nSend \"summary\" or \"สรุป\" anytime to see this month's stats 📊"
       );
       continue;
@@ -432,10 +454,10 @@ export async function POST(req: NextRequest) {
         .eq("line_user_id", lineUserId)
         .single();
       if (!summaryProfile) {
-        await replyToLine(replyToken, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+        await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
       } else {
         const summary = await buildMonthlySummary(supabase, summaryProfile.id);
-        await replyToLine(replyToken, summary);
+        await pushToLine(lineUserId, summary);
       }
       continue;
     }
@@ -448,8 +470,8 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!profile) {
-      await replyToLine(
-        replyToken,
+      await pushToLine(
+        lineUserId,
         "Your LINE account is not linked yet. Open the app → Settings → Connect LINE to link it."
       );
       continue;
@@ -463,7 +485,7 @@ export async function POST(req: NextRequest) {
 
     const parsed = parseTransaction(text, categoryNames);
     if (!parsed) {
-      await replyToLine(replyToken, randomFormatError());
+      await pushToLine(lineUserId, randomFormatError());
       continue;
     }
 
@@ -480,13 +502,13 @@ export async function POST(req: NextRequest) {
       .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id, type: parsed.type }]);
 
     if (txError) {
-      await replyToLine(replyToken, "Failed to save. Please try again.");
+      await pushToLine(lineUserId, "Failed to save. Please try again.");
       continue;
     }
 
     const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;
     const personality = await pickPersonalityResponse(supabase, parsed.category, profile.id, (profile as Record<string, unknown>).line_last_response as string ?? null);
-    await replyToLine(replyToken, buildSuccessMessage(personality, parsed.amount, catLabel));
+    await pushToLine(lineUserId, buildSuccessMessage(personality, parsed.amount, catLabel));
   }
 
   return NextResponse.json({ ok: true });
