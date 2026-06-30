@@ -28,9 +28,19 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" });
 }
 
+const BADGE_COLORS = [
+  { bg: "#dbeafe", color: "#1e40af" },
+  { bg: "#fce7f3", color: "#be185d" },
+  { bg: "#dcfce7", color: "#15803d" },
+  { bg: "#fef3c7", color: "#92400e" },
+  { bg: "#f5f3ff", color: "#6d28d9" },
+  { bg: "#fef2f2", color: "#b91c1c" },
+];
+
 export default function RecentTransactions({ transactions, limit = 10, onEdit, onDelete }: RecentTransactionsProps) {
   const shown = transactions.slice(0, limit);
   const hasActions = !!(onEdit || onDelete);
+  const uniqueSpenders = Array.from(new Set(transactions.map((t) => t.spender).filter(Boolean))).sort();
 
   if (shown.length === 0) {
     return (
@@ -69,7 +79,6 @@ export default function RecentTransactions({ transactions, limit = 10, onEdit, o
         <tbody>
           {shown.map((t) => {
             const { icon, bg } = CATEGORY_ICONS[t.category] ?? { icon: "📦", bg: "#f9fafb" };
-            const isWife = t.spender === "Wife";
             return (
               <tr
                 key={t.id}
@@ -113,15 +122,15 @@ export default function RecentTransactions({ transactions, limit = 10, onEdit, o
                 </td>
                 {/* Who */}
                 <td className="py-3" style={{ textAlign: "center", paddingLeft: 10, paddingRight: hasActions ? 10 : 16 }}>
-                  <span
-                    className="text-xs font-extrabold px-2 py-0.5 rounded-full"
-                    style={{
-                      background: isWife ? "#fce7f3" : "#dbeafe",
-                      color: isWife ? "#be185d" : "#1e40af",
-                    }}
-                  >
-                    {isWife ? "👩 Wife" : "👨 Hub"}
-                  </span>
+                  {t.spender && (() => {
+                    const idx = uniqueSpenders.indexOf(t.spender);
+                    const { bg, color } = BADGE_COLORS[idx % BADGE_COLORS.length] ?? BADGE_COLORS[0];
+                    return (
+                      <span className="text-xs font-extrabold px-2 py-0.5 rounded-full" style={{ background: bg, color }}>
+                        {t.spender}
+                      </span>
+                    );
+                  })()}
                 </td>
                 {/* Actions */}
                 {hasActions && (

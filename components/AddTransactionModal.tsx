@@ -20,22 +20,14 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
   const [form, setForm] = useState({ date: today, amount: "", category: CATEGORIES[0], note: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [userRole, setUserRole] = useState<"Husband" | "Wife" | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
 
-  // Look up the logged-in user's role from the profiles table on open.
-  // Requires a `profiles` table: CREATE TABLE profiles (id UUID PRIMARY KEY REFERENCES auth.users, role TEXT CHECK (role IN ('Husband','Wife')));
   useEffect(() => {
     if (!isOpen) return;
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
-      supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single()
-        .then(({ data }) => {
-          if (data?.role === "Husband" || data?.role === "Wife") setUserRole(data.role);
-        });
+      const name = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "Unknown";
+      setUsername(name);
     });
   }, [isOpen]);
 
@@ -56,14 +48,15 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
       return;
     }
 
+    const spender = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "Unknown";
     const payload: Record<string, unknown> = {
       date: form.date,
       amount: parseFloat(form.amount),
       category: form.category,
       note: form.note,
       user_id: user.id,
+      spender,
     };
-    if (userRole) payload.spender = userRole;
 
     const { data, error: dbError } = await supabase
       .from("transactions")
@@ -91,7 +84,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
           <div>
             <h2 className="text-lg font-black" style={{ color: "#1f2937" }}>Add Expense 💳</h2>
             <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>
-              {userRole ? `Adding as ${userRole === "Husband" ? "👨 Husband" : "👩 Wife"}` : "Record a new transaction"}
+              {username ? `Adding as ${username}` : "Record a new transaction"}
             </p>
           </div>
           <button

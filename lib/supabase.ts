@@ -12,6 +12,6 @@ export type Transaction = {
   amount: number;
   category: string;
   note: string;
-  spender: "Husband" | "Wife";
+  spender: string;
   user_id: string;
 };

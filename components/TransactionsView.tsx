@@ -34,7 +34,7 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [filterSpender, setFilterSpender] = useState<"All" | "Husband" | "Wife">("All");
+  const [filterSpender, setFilterSpender] = useState("All");
 
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
@@ -74,6 +74,8 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
     setTransactions((prev) => prev.filter((t) => t.id !== deletingTx.id));
     setDeletingTx(null);
   };
+
+  const uniqueSpenders = Array.from(new Set(transactions.map((t) => t.spender).filter(Boolean))).sort();
 
   const filtered = transactions.filter((t) => {
     const matchSearch = !search ||
@@ -137,25 +139,31 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
               style={{ border: "2px solid #f3e8ff", color: "#374151" }}
             />
           </div>
-          <div className="flex gap-2">
-            {(["All", "Husband", "Wife"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setFilterSpender(s)}
-                className="flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-extrabold border-2 transition-all"
-                style={
-                  filterSpender === s
-                    ? s === "Wife"
-                      ? { background: "#fce7f3", borderColor: "#f9a8d4", color: "#be185d" }
-                      : s === "Husband"
-                      ? { background: "#dbeafe", borderColor: "#93c5fd", color: "#1e40af" }
-                      : { background: "#f3e8ff", borderColor: "#c4b5fd", color: "#7c3aed" }
-                    : { background: "#f9fafb", borderColor: "#f3f4f6", color: "#9ca3af" }
-                }
-              >
-                {s === "Wife" ? "👩 " : s === "Husband" ? "👨 " : ""}{s}
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-2">
+            {(["All", ...uniqueSpenders]).map((s, i) => {
+              const activeColors = [
+                { background: "#f3e8ff", borderColor: "#c4b5fd", color: "#7c3aed" },
+                { background: "#dbeafe", borderColor: "#93c5fd", color: "#1e40af" },
+                { background: "#fce7f3", borderColor: "#f9a8d4", color: "#be185d" },
+                { background: "#dcfce7", borderColor: "#86efac", color: "#15803d" },
+                { background: "#fef3c7", borderColor: "#fde68a", color: "#92400e" },
+                { background: "#f5f3ff", borderColor: "#c4b5fd", color: "#6d28d9" },
+              ];
+              return (
+                <button
+                  key={s}
+                  onClick={() => setFilterSpender(s)}
+                  className="flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-extrabold border-2 transition-all"
+                  style={
+                    filterSpender === s
+                      ? activeColors[i % activeColors.length]
+                      : { background: "#f9fafb", borderColor: "#f3f4f6", color: "#9ca3af" }
+                  }
+                >
+                  {s}
+                </button>
+              );
+            })}
           </div>
         </div>
 

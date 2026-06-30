@@ -42,7 +42,7 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filterSpender, setFilterSpender] = useState<"All Spenders" | "Husband" | "Wife">("All Spenders");
+  const [filterSpender, setFilterSpender] = useState("All Spenders");
 
   const now = new Date();
   const months = Array.from({ length: 12 }, (_, i) => {
@@ -66,6 +66,8 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
 
   useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
   useEffect(() => { if (newTransaction) setTransactions((prev) => [newTransaction, ...prev]); }, [newTransaction]);
+
+  const uniqueSpenders = Array.from(new Set(transactions.map((t) => t.spender).filter(Boolean))).sort();
 
   const { start, end } = getCurrentMonthRange();
   const monthlyTx = transactions.filter((t) => {
@@ -119,13 +121,12 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
           {/* Spender filter */}
           <select
             value={filterSpender}
-            onChange={(e) => setFilterSpender(e.target.value as typeof filterSpender)}
+            onChange={(e) => setFilterSpender(e.target.value)}
             className="text-xs font-bold rounded-xl px-3 py-2 cursor-pointer outline-none"
             style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
           >
             <option>All Spenders</option>
-            <option>Husband</option>
-            <option>Wife</option>
+            {uniqueSpenders.map((s) => <option key={s}>{s}</option>)}
           </select>
           {/* Add button */}
           <button
@@ -217,14 +218,15 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
               </p>
             </div>
             <div className="flex gap-4">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "#bfdbfe" }} />
-                <span className="text-xs font-bold" style={{ color: "#6b7280" }}>Husband</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "#fbcfe8" }} />
-                <span className="text-xs font-bold" style={{ color: "#6b7280" }}>Wife</span>
-              </div>
+              {uniqueSpenders.map((s, i) => {
+                const barColors = ["#bfdbfe", "#fbcfe8", "#bbf7d0", "#fde68a", "#c4b5fd", "#fca5a5"];
+                return (
+                  <div key={s} className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-sm" style={{ background: barColors[i % barColors.length] }} />
+                    <span className="text-xs font-bold" style={{ color: "#6b7280" }}>{s}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
           {loading ? (
