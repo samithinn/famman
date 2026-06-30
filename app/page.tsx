@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState } from "react";
 import Sidebar, { View } from "@/components/Sidebar";
 import Dashboard from "@/components/Dashboard";
