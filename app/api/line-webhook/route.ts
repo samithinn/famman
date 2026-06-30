@@ -163,17 +163,24 @@ async function handleShortcutRequest(
   }
 
   const supabase = serviceClient();
-  const lineUserId = body.userId;
+  const lineUserId = (body.userId ?? "").trim();
   const text = body.rawText.trim();
 
-  const { data: profile } = await supabase
+  console.log("[shortcut] looking up line_user_id:", JSON.stringify(lineUserId));
+
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, full_name")
     .eq("line_user_id", lineUserId)
     .single();
 
+  console.log("[shortcut] profile result:", JSON.stringify(profile), "error:", JSON.stringify(profileError));
+
   if (!profile) {
-    return NextResponse.json({ error: "LINE user not linked to any account" }, { status: 404 });
+    return NextResponse.json(
+      { error: `No profile found for line_user_id: ${lineUserId}`, detail: profileError?.message ?? null },
+      { status: 404 }
+    );
   }
 
   const { data: cats } = await supabase
@@ -232,6 +239,14 @@ export async function POST(req: NextRequest) {
     !("events" in (bodyJson as object));
 
   if (isShortcutByHeader || isShortcutByBody) {
+    if (
+      !bodyJson ||
+      typeof bodyJson !== "object" ||
+      !("userId" in (bodyJson as object)) ||
+      !("rawText" in (bodyJson as object))
+    ) {
+      return NextResponse.json({ error: "Body must include userId and rawText" }, { status: 400 });
+    }
     return handleShortcutRequest(req, bodyJson as { userId: string; rawText: string });
   }
 
