@@ -6,7 +6,6 @@ import { supabase, Transaction } from "@/lib/supabase";
 import SpendingChart from "./SpendingChart";
 import RecentTransactions from "./RecentTransactions";
 
-const MONTHLY_BUDGET = 35000;
 
 function exportCSV(transactions: Transaction[]) {
   const headers = ["id", "date", "amount", "category", "note", "spender", "created_at"];
@@ -43,6 +42,7 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filterSpender, setFilterSpender] = useState("All Spenders");
+  const [monthlyBudget, setMonthlyBudget] = useState(0);
 
   const now = new Date();
   const months = Array.from({ length: 12 }, (_, i) => {
@@ -67,6 +67,20 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
   useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
   useEffect(() => { if (newTransaction) setTransactions((prev) => [newTransaction, ...prev]); }, [newTransaction]);
 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from("profiles")
+        .select("monthly_budget")
+        .eq("id", user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.monthly_budget) setMonthlyBudget(Number(data.monthly_budget));
+        });
+    });
+  }, []);
+
   const uniqueSpenders = Array.from(new Set(transactions.map((t) => t.spender).filter(Boolean))).sort();
 
   const { start, end } = getCurrentMonthRange();
@@ -78,7 +92,7 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
   const currentMonthTx = transactions.filter((t) => t.date >= start && t.date <= end);
 
   const totalThisMonth = monthlyTx.reduce((s, t) => s + t.amount, 0);
-  const budgetLeft = MONTHLY_BUDGET - currentMonthTx.reduce((s, t) => s + t.amount, 0);
+  const budgetLeft = monthlyBudget - currentMonthTx.reduce((s, t) => s + t.amount, 0);
   const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const avgPerDay = totalThisMonth / days;
 
@@ -200,10 +214,10 @@ export default function Dashboard({ newTransaction, onAddTransaction }: Dashboar
           >
             <p className="text-xs font-extrabold mb-2" style={{ color: "rgba(255,255,255,0.65)", letterSpacing: "0.8px" }}>BUDGET LEFT</p>
             <p className="text-2xl font-black text-white" style={{ letterSpacing: "-1px" }}>
-              ฿{budgetLeft.toFixed(2)}
+              {monthlyBudget > 0 ? `฿${budgetLeft.toFixed(2)}` : "—"}
             </p>
             <p className="text-xs font-semibold mt-1" style={{ color: "rgba(255,255,255,0.7)" }}>
-              of ฿{MONTHLY_BUDGET.toLocaleString()} budget
+              {monthlyBudget > 0 ? `of ฿${monthlyBudget.toLocaleString()} budget` : "Set budget in Settings"}
             </p>
           </div>
         </div>

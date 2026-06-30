@@ -1,13 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Loader2 } from "lucide-react";
-import { Transaction } from "@/lib/supabase";
-
-const CATEGORIES = [
-  "Food & Dining", "Groceries", "Transportation", "Utilities",
-  "Healthcare", "Entertainment", "Shopping", "Education", "Travel", "Other",
-];
+import { supabase, Transaction } from "@/lib/supabase";
 
 interface EditTransactionModalProps {
   transaction: Transaction;
@@ -24,6 +19,24 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [categories, setCategories] = useState<string[]>([]);
+  const [catLoading, setCatLoading] = useState(true);
+
+  useEffect(() => {
+    supabase
+      .from("categories")
+      .select("name")
+      .order("name")
+      .then(({ data }) => {
+        const names = (data ?? []).map((c: { name: string }) => c.name);
+        // Include the existing category even if it was removed from the list
+        if (transaction.category && !names.includes(transaction.category)) {
+          names.unshift(transaction.category);
+        }
+        setCategories(names);
+        setCatLoading(false);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,8 +124,12 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
               onChange={(e) => setForm({ ...form, category: e.target.value })}
               className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none cursor-pointer"
               style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+              disabled={catLoading}
             >
-              {CATEGORIES.map((cat) => <option key={cat}>{cat}</option>)}
+              {catLoading
+                ? <option>{transaction.category}</option>
+                : categories.map((cat) => <option key={cat}>{cat}</option>)
+              }
             </select>
           </div>
 

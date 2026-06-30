@@ -10,7 +10,14 @@ export type Profile = {
   full_name: string | null;
   dob: string | null;
   photo_url: string | null;
+  monthly_budget: number | null;
   updated_at: string;
+};
+
+export type Category = {
+  id: string;
+  name: string;
+  user_id: string;
 };
 
 export type Transaction = {

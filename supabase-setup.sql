@@ -31,3 +31,43 @@ DROP POLICY IF EXISTS "users manage own profile" ON profiles;
 CREATE POLICY "users manage own profile"
   ON profiles FOR ALL TO authenticated
   USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+
+-- 4. Add monthly_budget to profiles
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS monthly_budget numeric DEFAULT 0;
+
+-- 5. Categories table with RLS
+CREATE TABLE IF NOT EXISTS categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users manage own categories" ON categories;
+CREATE POLICY "users manage own categories"
+  ON categories FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- 7. Add role column to profiles
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user'
+  CHECK (role IN ('admin', 'user'));
+
+-- 8. Allow all authenticated users to SELECT all profiles (needed for admin user list)
+--    INSERT/UPDATE/DELETE remain restricted to own row via the existing "users manage own profile" policy
+DROP POLICY IF EXISTS "authenticated users can read all profiles" ON profiles;
+CREATE POLICY "authenticated users can read all profiles"
+  ON profiles FOR SELECT TO authenticated
+  USING (true);
+
+-- 6. Seed 10 default categories for all existing users
+INSERT INTO categories (id, name, user_id)
+SELECT gen_random_uuid(), v.name, u.id
+FROM auth.users u
+CROSS JOIN (VALUES
+  ('Food & Dining'), ('Groceries'), ('Transportation'), ('Utilities'),
+  ('Healthcare'), ('Entertainment'), ('Shopping'), ('Education'), ('Travel'), ('Other')
+) AS v(name)
+WHERE NOT EXISTS (
+  SELECT 1 FROM categories c WHERE c.user_id = u.id AND c.name = v.name
+);

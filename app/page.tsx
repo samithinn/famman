@@ -5,7 +5,8 @@ import Sidebar, { View } from "@/components/Sidebar";
 import Dashboard from "@/components/Dashboard";
 import TransactionsView from "@/components/TransactionsView";
 import AddTransactionModal from "@/components/AddTransactionModal";
-import { supabase, Transaction } from "@/lib/supabase";
+import { Transaction } from "@/lib/supabase";
+import SettingsView from "@/components/SettingsView";
 
 const BOTTOM_NAV: { label: string; view: View; icon: string }[] = [
   { label: "Home",    view: "dashboard",    icon: "🏠" },
@@ -29,29 +30,7 @@ export default function Home() {
       case "transactions":
         return <TransactionsView newTransaction={lastAdded} onAddTransaction={() => setShowModal(true)} />;
       case "settings":
-        return (
-          <div className="flex flex-col h-full">
-            <div className="sticky top-0 z-10 bg-white px-5 py-4" style={{ borderBottom: "1px solid #f3e8ff" }}>
-              <h1 className="text-lg font-black" style={{ color: "#1f2937" }}>Settings ⚙️</h1>
-            </div>
-            <div className="flex-1 flex items-center justify-center p-8">
-              <div className="text-center">
-                <div className="text-5xl mb-3">⚙️</div>
-                <p className="text-sm font-bold mb-6" style={{ color: "#9ca3af" }}>Settings coming soon</p>
-                <button
-                  onClick={async () => {
-                    await supabase.auth.signOut();
-                    window.location.href = "/login";
-                  }}
-                  className="px-6 py-2.5 rounded-xl text-sm font-extrabold"
-                  style={{ background: "#fef2f2", color: "#ef4444", border: "2px solid #fecaca" }}
-                >
-                  Sign out
-                </button>
-              </div>
-            </div>
-          </div>
-        );
+        return <SettingsView />;
     }
   };
 

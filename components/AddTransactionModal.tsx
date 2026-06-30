@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { X, Loader2, Upload } from "lucide-react";
 import { supabase, Transaction } from "@/lib/supabase";
 
-const CATEGORIES = [
+const DEFAULT_CATEGORIES = [
   "Food & Dining", "Groceries", "Transportation", "Utilities",
   "Healthcare", "Entertainment", "Shopping", "Education", "Travel", "Other",
 ];
@@ -18,7 +18,7 @@ interface AddTransactionModalProps {
 type Mode = "manual" | "csv";
 type CSVRow = { date: string; amount: string; category: string; note: string };
 
-function parseCSV(text: string): { rows: CSVRow[]; errors: string[] } {
+function parseCSV(text: string, allowedCategories: string[]): { rows: CSVRow[]; errors: string[] } {
   const lines = text.trim().split("\n").filter(l => l.trim());
   if (!lines.length) return { rows: [], errors: ["File is empty."] };
 
@@ -41,7 +41,7 @@ function parseCSV(text: string): { rows: CSVRow[]; errors: string[] } {
     if (!rawAmount || isNaN(amt) || amt <= 0) {
       errors.push(`Row ${rowNum}: Invalid amount "${rawAmount}" — must be a positive number`);
     }
-    if (!rawCategory || !CATEGORIES.includes(rawCategory)) {
+    if (!rawCategory || (allowedCategories.length > 0 && !allowedCategories.includes(rawCategory))) {
       errors.push(`Row ${rowNum}: Unknown category "${rawCategory}"`);
     }
 
@@ -67,10 +67,12 @@ async function resolveSpender() {
 export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddTransactionModalProps) {
   const today = new Date().toISOString().split("T")[0];
   const [mode, setMode] = useState<Mode>("manual");
-  const [form, setForm] = useState({ date: today, amount: "", category: CATEGORIES[0], note: "" });
+  const [form, setForm] = useState({ date: today, amount: "", category: "", note: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [username, setUsername] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [catLoading, setCatLoading] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [csvRows, setCsvRows] = useState<CSVRow[]>([]);
@@ -85,10 +87,30 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
     setCsvRows([]);
     setCsvErrors([]);
     setCsvFileName("");
+    setForm({ date: today, amount: "", category: "", note: "" });
     resolveSpender().then(result => {
       if (result) setUsername(result.spender);
     });
-  }, [isOpen]);
+    loadCategories();
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadCategories() {
+    setCatLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setCatLoading(false); return; }
+    let { data } = await supabase.from("categories").select("name").order("name");
+    if (!data || data.length === 0) {
+      await supabase
+        .from("categories")
+        .insert(DEFAULT_CATEGORIES.map(name => ({ name, user_id: user.id })));
+      const res = await supabase.from("categories").select("name").order("name");
+      data = res.data;
+    }
+    const names = (data ?? []).map((c: { name: string }) => c.name);
+    setCategories(names);
+    setForm(f => ({ ...f, category: names[0] ?? "" }));
+    setCatLoading(false);
+  }
 
   if (!isOpen) return null;
 
@@ -113,7 +135,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
     setLoading(false);
     if (dbError) { setError(dbError.message); return; }
     onSuccess(data as Transaction);
-    setForm({ date: today, amount: "", category: CATEGORIES[0], note: "" });
+    setForm({ date: today, amount: "", category: categories[0] ?? "", note: "" });
     onClose();
   };
 
@@ -126,7 +148,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
     setError("");
     const reader = new FileReader();
     reader.onload = ev => {
-      const { rows, errors } = parseCSV(ev.target?.result as string);
+      const { rows, errors } = parseCSV(ev.target?.result as string, categories);
       setCsvRows(rows);
       setCsvErrors(errors);
     };
@@ -240,8 +262,12 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
                 onChange={e => setForm({ ...form, category: e.target.value })}
                 className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none cursor-pointer"
                 style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+                disabled={catLoading}
               >
-                {CATEGORIES.map(cat => <option key={cat}>{cat}</option>)}
+                {catLoading
+                  ? <option>Loading…</option>
+                  : categories.map(cat => <option key={cat}>{cat}</option>)
+                }
               </select>
             </div>
 
@@ -263,12 +289,12 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || catLoading}
               className="w-full py-3 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
               style={{
                 background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
                 boxShadow: "0 4px 14px rgba(236,72,153,0.35)",
-                opacity: loading ? 0.7 : 1,
+                opacity: loading || catLoading ? 0.7 : 1,
               }}
             >
               {loading ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : "Save Expense 💾"}
