@@ -20,6 +20,21 @@ export async function GET() {
   });
 }
 
+async function getBotBasicId(): Promise<string | null> {
+  const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!accessToken) return null;
+  try {
+    const res = await fetch("https://api.line.me/v2/bot/info", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.basicId as string | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST() {
   const supabase = createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
@@ -34,7 +49,8 @@ export async function POST() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ token, expires });
+  const botBasicId = await getBotBasicId();
+  return NextResponse.json({ token, expires, botBasicId });
 }
 
 export async function DELETE() {

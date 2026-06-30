@@ -14,9 +14,8 @@ export default function SettingsView() {
 
   // LINE connection
   const [lineLinked, setLineLinked] = useState(false);
-  const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [linkExpires, setLinkExpires] = useState<Date | null>(null);
   const [linkLoading, setLinkLoading] = useState(false);
+  const [lineWaiting, setLineWaiting] = useState(false);
   const [unlinkLoading, setUnlinkLoading] = useState(false);
   const [lineError, setLineError] = useState("");
 
@@ -67,21 +66,47 @@ export default function SettingsView() {
     if (!res.ok) return;
     const data = await res.json();
     setLineLinked(data.linked);
-    if (data.token && data.expires && new Date(data.expires) > new Date()) {
-      setLinkToken(data.token);
-      setLinkExpires(new Date(data.expires));
-    }
+    if (data.linked) setLineWaiting(false);
   }
 
-  async function generateLinkToken() {
+  async function connectLine() {
     setLinkLoading(true);
     setLineError("");
     const res = await fetch("/api/line-link", { method: "POST" });
     const data = await res.json();
     setLinkLoading(false);
-    if (!res.ok) { setLineError(data.error ?? "Failed to generate code."); return; }
-    setLinkToken(data.token);
-    setLinkExpires(new Date(data.expires));
+    if (!res.ok) { setLineError(data.error ?? "Failed to connect."); return; }
+
+    const basicId: string | null = data.botBasicId;
+    const token: string = data.token;
+    const deepLink = basicId
+      ? `https://line.me/R/oaMessage/${basicId.replace("@", "")}/?link%20${token}`
+      : null;
+
+    if (deepLink) {
+      window.open(deepLink, "_blank");
+    } else {
+      setLineError("Could not open LINE. Please add the bot manually and send: link " + token);
+      return;
+    }
+
+    setLineWaiting(true);
+    // Poll every 3 s until linked (max 10 min)
+    let attempts = 0;
+    const poll = setInterval(async () => {
+      attempts++;
+      const check = await fetch("/api/line-link");
+      if (!check.ok) return;
+      const d = await check.json();
+      if (d.linked) {
+        clearInterval(poll);
+        setLineLinked(true);
+        setLineWaiting(false);
+      } else if (attempts >= 200) {
+        clearInterval(poll);
+        setLineWaiting(false);
+      }
+    }, 3000);
   }
 
   async function unlinkLine() {
@@ -91,8 +116,7 @@ export default function SettingsView() {
     setUnlinkLoading(false);
     if (!res.ok) { const d = await res.json(); setLineError(d.error ?? "Failed to unlink."); return; }
     setLineLinked(false);
-    setLinkToken(null);
-    setLinkExpires(null);
+    setLineWaiting(false);
   }
 
   async function fetchUsers() {
@@ -486,48 +510,42 @@ export default function SettingsView() {
                 {unlinkLoading ? <Loader2 size={14} className="animate-spin" /> : "Unlink LINE account"}
               </button>
             </div>
+          ) : lineWaiting ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
+                <Loader2 size={16} className="animate-spin flex-shrink-0" style={{ color: "#d97706" }} />
+                <div>
+                  <p className="text-xs font-extrabold" style={{ color: "#92400e" }}>Waiting for LINE…</p>
+                  <p className="text-xs font-semibold mt-0.5" style={{ color: "#b45309" }}>
+                    Tap Send in LINE to finish connecting
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setLineWaiting(false)}
+                className="w-full py-2 rounded-xl text-xs font-extrabold"
+                style={{ background: "#f3e8ff", color: "#7c3aed" }}
+              >
+                Cancel
+              </button>
+            </div>
           ) : (
             <div className="space-y-3">
-              {linkToken && linkExpires && linkExpires > new Date() ? (
-                <>
-                  <div className="rounded-xl p-4 text-center" style={{ background: "#f8f4ff", border: "2px solid #e9d5ff" }}>
-                    <p className="text-xs font-extrabold mb-2" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>YOUR LINK CODE</p>
-                    <p className="text-2xl font-black tracking-widest mb-2" style={{ color: "#7c3aed" }}>{linkToken}</p>
-                    <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
-                      Send <code className="font-bold" style={{ color: "#7c3aed" }}>link {linkToken}</code> to the LINE bot
-                    </p>
-                  </div>
-                  <p className="text-xs font-semibold text-center" style={{ color: "#9ca3af" }}>
-                    Expires {linkExpires.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </p>
-                  <button
-                    onClick={generateLinkToken}
-                    disabled={linkLoading}
-                    className="w-full py-2 rounded-xl text-xs font-extrabold"
-                    style={{ background: "#f3e8ff", color: "#7c3aed" }}
-                  >
-                    Generate new code
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
-                    Generate a one-time code, then send it to the LINE bot to link your account.
-                  </p>
-                  <button
-                    onClick={generateLinkToken}
-                    disabled={linkLoading}
-                    className="w-full py-3 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
-                    style={{
-                      background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
-                      boxShadow: "0 4px 14px rgba(236,72,153,0.35)",
-                      opacity: linkLoading ? 0.7 : 1,
-                    }}
-                  >
-                    {linkLoading ? <Loader2 size={14} className="animate-spin" /> : "Generate Link Code"}
-                  </button>
-                </>
-              )}
+              <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+                Tap the button — LINE will open with everything pre-filled. Just hit Send.
+              </p>
+              <button
+                onClick={connectLine}
+                disabled={linkLoading}
+                className="w-full py-3 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
+                style={{
+                  background: "linear-gradient(135deg, #06c755, #00b248)",
+                  boxShadow: "0 4px 14px rgba(6,199,85,0.4)",
+                  opacity: linkLoading ? 0.7 : 1,
+                }}
+              >
+                {linkLoading ? <Loader2 size={14} className="animate-spin" /> : "💬 Connect with LINE"}
+              </button>
             </div>
           )}
         </div>
