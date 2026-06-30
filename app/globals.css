@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #fdf2f8;
+  font-family: 'Nunito', sans-serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb { background: #c4b5fd; border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Cards */
+.stat-card {
+  @apply bg-white rounded-2xl p-5 shadow-sm;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+/* Table rows */
+tr.txn-row:hover td {
+  background: #fdf8fb;
+}
