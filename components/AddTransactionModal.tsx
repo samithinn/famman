@@ -33,9 +33,15 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
       return;
     }
     setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setError("Not authenticated. Please sign in again.");
+      setLoading(false);
+      return;
+    }
     const { data, error: dbError } = await supabase
       .from("transactions")
-      .insert([{ date: form.date, amount: parseFloat(form.amount), category: form.category, note: form.note, spender: form.spender }])
+      .insert([{ date: form.date, amount: parseFloat(form.amount), category: form.category, note: form.note, spender: form.spender, user_id: user.id }])
       .select().single();
     setLoading(false);
     if (dbError) { setError(dbError.message); return; }
