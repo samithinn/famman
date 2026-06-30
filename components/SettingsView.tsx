@@ -12,6 +12,14 @@ export default function SettingsView() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<Role>("user");
 
+  // LINE connection
+  const [lineLinked, setLineLinked] = useState(false);
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [linkExpires, setLinkExpires] = useState<Date | null>(null);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [unlinkLoading, setUnlinkLoading] = useState(false);
+  const [lineError, setLineError] = useState("");
+
   // Budget
   const [budget, setBudget] = useState("");
   const [budgetLoading, setBudgetLoading] = useState(false);
@@ -36,6 +44,7 @@ export default function SettingsView() {
   useEffect(() => {
     fetchProfile();
     fetchCategories();
+    fetchLineStatus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchProfile() {
@@ -51,6 +60,39 @@ export default function SettingsView() {
     const role = (data?.role ?? "user") as Role;
     setUserRole(role);
     if (role === "admin") fetchUsers();
+  }
+
+  async function fetchLineStatus() {
+    const res = await fetch("/api/line-link");
+    if (!res.ok) return;
+    const data = await res.json();
+    setLineLinked(data.linked);
+    if (data.token && data.expires && new Date(data.expires) > new Date()) {
+      setLinkToken(data.token);
+      setLinkExpires(new Date(data.expires));
+    }
+  }
+
+  async function generateLinkToken() {
+    setLinkLoading(true);
+    setLineError("");
+    const res = await fetch("/api/line-link", { method: "POST" });
+    const data = await res.json();
+    setLinkLoading(false);
+    if (!res.ok) { setLineError(data.error ?? "Failed to generate code."); return; }
+    setLinkToken(data.token);
+    setLinkExpires(new Date(data.expires));
+  }
+
+  async function unlinkLine() {
+    setUnlinkLoading(true);
+    setLineError("");
+    const res = await fetch("/api/line-link", { method: "DELETE" });
+    setUnlinkLoading(false);
+    if (!res.ok) { const d = await res.json(); setLineError(d.error ?? "Failed to unlink."); return; }
+    setLineLinked(false);
+    setLinkToken(null);
+    setLinkExpires(null);
   }
 
   async function fetchUsers() {
@@ -409,6 +451,83 @@ export default function SettingsView() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* LINE Connect */}
+        <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+          <h2 className="text-sm font-black mb-1" style={{ color: "#1f2937" }}>Connect LINE</h2>
+          <p className="text-xs font-semibold mb-4" style={{ color: "#9ca3af" }}>
+            Record expenses by sending a message to the LINE bot
+          </p>
+
+          {lineError && (
+            <p className="text-xs font-semibold px-3 py-2 rounded-xl mb-3" style={{ background: "#fef2f2", color: "#ef4444" }}>
+              {lineError}
+            </p>
+          )}
+
+          {lineLinked ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                <span className="text-base">✓</span>
+                <span className="text-xs font-extrabold" style={{ color: "#15803d" }}>LINE account connected</span>
+              </div>
+              <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+                Send messages like <code className="font-bold">500 Food &amp; Dining</code> to the bot to log expenses.
+              </p>
+              <button
+                onClick={unlinkLine}
+                disabled={unlinkLoading}
+                className="w-full py-2.5 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2"
+                style={{ background: "#fef2f2", color: "#ef4444", border: "2px solid #fecaca", opacity: unlinkLoading ? 0.7 : 1 }}
+              >
+                {unlinkLoading ? <Loader2 size={14} className="animate-spin" /> : "Unlink LINE account"}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {linkToken && linkExpires && linkExpires > new Date() ? (
+                <>
+                  <div className="rounded-xl p-4 text-center" style={{ background: "#f8f4ff", border: "2px solid #e9d5ff" }}>
+                    <p className="text-xs font-extrabold mb-2" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>YOUR LINK CODE</p>
+                    <p className="text-2xl font-black tracking-widest mb-2" style={{ color: "#7c3aed" }}>{linkToken}</p>
+                    <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+                      Send <code className="font-bold" style={{ color: "#7c3aed" }}>link {linkToken}</code> to the LINE bot
+                    </p>
+                  </div>
+                  <p className="text-xs font-semibold text-center" style={{ color: "#9ca3af" }}>
+                    Expires {linkExpires.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                  <button
+                    onClick={generateLinkToken}
+                    disabled={linkLoading}
+                    className="w-full py-2 rounded-xl text-xs font-extrabold"
+                    style={{ background: "#f3e8ff", color: "#7c3aed" }}
+                  >
+                    Generate new code
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+                    Generate a one-time code, then send it to the LINE bot to link your account.
+                  </p>
+                  <button
+                    onClick={generateLinkToken}
+                    disabled={linkLoading}
+                    className="w-full py-3 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
+                    style={{
+                      background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
+                      boxShadow: "0 4px 14px rgba(236,72,153,0.35)",
+                      opacity: linkLoading ? 0.7 : 1,
+                    }}
+                  >
+                    {linkLoading ? <Loader2 size={14} className="animate-spin" /> : "Generate Link Code"}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

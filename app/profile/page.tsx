@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Loader2, ArrowLeft, CheckCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
+type LineStatus = { linked: boolean; token: string | null; expires: string | null };
+
 export default function ProfilePage() {
   const router = useRouter();
   const [form, setForm] = useState({ full_name: "", dob: "", photo_url: "" });
@@ -13,6 +15,13 @@ export default function ProfilePage() {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [userEmail, setUserEmail] = useState("");
+
+  const [lineLinked, setLineLinked] = useState(false);
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [linkExpires, setLinkExpires] = useState<Date | null>(null);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [unlinkLoading, setUnlinkLoading] = useState(false);
+  const [lineError, setLineError] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -34,7 +43,41 @@ export default function ProfilePage() {
       setLoading(false);
     };
     load();
-  }, [router]);
+    fetchLineStatus();
+  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function fetchLineStatus() {
+    const res = await fetch("/api/line-link");
+    if (!res.ok) return;
+    const data: LineStatus = await res.json();
+    setLineLinked(data.linked);
+    if (data.token && data.expires && new Date(data.expires) > new Date()) {
+      setLinkToken(data.token);
+      setLinkExpires(new Date(data.expires));
+    }
+  }
+
+  async function generateLinkToken() {
+    setLinkLoading(true);
+    setLineError("");
+    const res = await fetch("/api/line-link", { method: "POST" });
+    const data = await res.json();
+    setLinkLoading(false);
+    if (!res.ok) { setLineError(data.error ?? "Failed to generate code."); return; }
+    setLinkToken(data.token);
+    setLinkExpires(new Date(data.expires));
+  }
+
+  async function unlinkLine() {
+    setUnlinkLoading(true);
+    setLineError("");
+    const res = await fetch("/api/line-link", { method: "DELETE" });
+    setUnlinkLoading(false);
+    if (!res.ok) { const d = await res.json(); setLineError(d.error ?? "Failed to unlink."); return; }
+    setLineLinked(false);
+    setLinkToken(null);
+    setLinkExpires(null);
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,7 +139,7 @@ export default function ProfilePage() {
         )}
 
         {/* Form card */}
-        <div className="bg-white rounded-2xl shadow-xl p-6">
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>
@@ -167,6 +210,86 @@ export default function ProfilePage() {
               {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : "Save Profile 💾"}
             </button>
           </form>
+        </div>
+
+        {/* LINE Connect card */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-base">💬</span>
+            <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Connect LINE</h2>
+          </div>
+          <p className="text-xs font-semibold mb-4" style={{ color: "#9ca3af" }}>
+            Record expenses by messaging the LINE bot
+          </p>
+
+          {lineError && (
+            <p className="text-xs font-semibold px-3 py-2 rounded-xl mb-3" style={{ background: "#fef2f2", color: "#ef4444" }}>
+              {lineError}
+            </p>
+          )}
+
+          {lineLinked ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                <span className="text-sm">✓</span>
+                <span className="text-xs font-extrabold" style={{ color: "#15803d" }}>LINE account connected</span>
+              </div>
+              <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+                Send <code className="font-bold" style={{ color: "#7c3aed" }}>500 Food &amp; Dining</code> to the bot to log an expense.
+              </p>
+              <button
+                onClick={unlinkLine}
+                disabled={unlinkLoading}
+                className="w-full py-2.5 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2"
+                style={{ background: "#fef2f2", color: "#ef4444", border: "2px solid #fecaca", opacity: unlinkLoading ? 0.7 : 1 }}
+              >
+                {unlinkLoading ? <Loader2 size={14} className="animate-spin" /> : "Unlink LINE account"}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {linkToken && linkExpires && linkExpires > new Date() ? (
+                <>
+                  <div className="rounded-xl p-4 text-center" style={{ background: "#f8f4ff", border: "2px solid #e9d5ff" }}>
+                    <p className="text-xs font-extrabold mb-2" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>YOUR LINK CODE</p>
+                    <p className="text-2xl font-black tracking-widest mb-2" style={{ color: "#7c3aed" }}>{linkToken}</p>
+                    <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+                      Send <code className="font-bold" style={{ color: "#7c3aed" }}>link {linkToken}</code> to the LINE bot
+                    </p>
+                  </div>
+                  <p className="text-xs font-semibold text-center" style={{ color: "#9ca3af" }}>
+                    Expires {linkExpires.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                  <button
+                    onClick={generateLinkToken}
+                    disabled={linkLoading}
+                    className="w-full py-2 rounded-xl text-xs font-extrabold"
+                    style={{ background: "#f3e8ff", color: "#7c3aed" }}
+                  >
+                    Generate new code
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+                    Generate a one-time code, then send it to the LINE bot to link your account.
+                  </p>
+                  <button
+                    onClick={generateLinkToken}
+                    disabled={linkLoading}
+                    className="w-full py-3 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
+                    style={{
+                      background: "linear-gradient(135deg, #06b6d4, #3b82f6)",
+                      boxShadow: "0 4px 14px rgba(6,182,212,0.35)",
+                      opacity: linkLoading ? 0.7 : 1,
+                    }}
+                  >
+                    {linkLoading ? <Loader2 size={14} className="animate-spin" /> : "Connect LINE 💬"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

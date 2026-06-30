@@ -80,3 +80,8 @@ SET spender = COALESCE(
   'Unknown'
 )
 WHERE t.spender IN ('Husband', 'Wife');
+
+-- 10. LINE bot integration columns on profiles
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_user_id text UNIQUE;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_link_token text UNIQUE;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_link_token_expires_at timestamptz;
