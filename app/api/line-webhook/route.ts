@@ -184,6 +184,35 @@ function buildSuccessMessage(personality: string, amount: number, catLabel: stri
   return `${personality} ${summary}`;
 }
 
+function extractRecipientName(rawText: string): string | null {
+  const lines = rawText.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    // Thai honorifics: นาย / นาง / นางสาว
+    if (/^(นาย|นาง(?:สาว)?)\s*[฀-๿a-zA-Z]/.test(line)) return line;
+    // Company / partnership
+    if (/^(บริษัท|ห้างหุ้นส่วน)/.test(line)) return line;
+  }
+  // All-caps English merchant name (e.g. "NALINEE RESTAURANT")
+  for (const line of lines) {
+    if (/^[A-Z][A-Z\s]{2,}$/.test(line)) return line;
+  }
+  return null;
+}
+
+function buildShortcutReply(
+  personality: string,
+  amount: number,
+  category: string,
+  recipientName: string | null,
+  isOther: boolean
+): string {
+  let msg = `${personality}\nยอด: ฿${amount.toLocaleString()}\n`;
+  if (recipientName) msg += `ร้าน/คนโอน: ${recipientName}\n`;
+  msg += `หมวด: ${category}`;
+  if (isOther) msg += `\n💡 ยังจัดหมวดไม่ได้ แก้ที่เว็บได้เลยนะ!`;
+  return msg;
+}
+
 function isValidApiKey(provided: string): boolean {
   const expected = process.env.WEBHOOK_API_KEY ?? "";
   if (!expected || provided.length !== expected.length) return false;
@@ -285,12 +314,9 @@ async function handleShortcutRequest(
     return NextResponse.json({ error: txError.message }, { status: 500 });
   }
 
-  const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;
   const personality = await pickPersonalityResponse(supabase, parsed.category);
-  let reply = buildSuccessMessage(personality, parsed.amount, catLabel);
-  if (parsed.category === "Other") {
-    reply += "\n💡 ยังจัดหมวดไม่ได้ แก้ที่เว็บได้เลยนะ!";
-  }
+  const recipientName = extractRecipientName(text);
+  const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, parsed.category === "Other");
   await pushToLine(lineUserId, reply);
 
   return NextResponse.json({ ok: true });
