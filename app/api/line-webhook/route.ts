@@ -58,19 +58,63 @@ function parseTransaction(
   const raw = isIncome ? trimmed.slice(1).trim() : trimmed;
   const type: "expense" | "income" = isIncome ? "income" : "expense";
 
+  // Fast path: original format "<number> [category] [note]"
   const parts = raw.split(/\s+/);
-  if (parts.length < 1) return null;
-  const amount = Number(parts[0]);
+  const firstNum = Number(parts[0]);
+  if (isFinite(firstNum) && firstNum > 0) {
+    if (parts.length === 1) return { amount: firstNum, category: "Other", note: "", type };
+    const maybeCategory = parts[1];
+    const matched = categories.find(c => c.toLowerCase() === maybeCategory.toLowerCase());
+    return matched
+      ? { amount: firstNum, category: matched, note: parts.slice(2).join(" "), type }
+      : { amount: firstNum, category: "Other", note: parts.slice(1).join(" "), type };
+  }
+
+  // Receipt extraction mode: handle free-form text like "10:00 30/06/2026 ข้าวราดแกง 50 บาท"
+  const cleaned = raw
+    .replace(/\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}/g, "")  // YYYY-MM-DD
+    .replace(/\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/g, "") // DD/MM/YYYY
+    .replace(/\d{1,2}:\d{2}(:\d{2})?/g, "")              // HH:MM or HH:MM:SS
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  let amount = 0;
+  let rawAmountToken = "";
+
+  // Prefer number tagged with บาท or ฿
+  const bahtMatch = cleaned.match(/([\d,]+(?:\.\d{1,2})?)\s*บาท/);
+  const symbolMatch = cleaned.match(/฿\s*([\d,]+(?:\.\d{1,2})?)/);
+
+  if (bahtMatch) {
+    amount = parseFloat(bahtMatch[1].replace(/,/g, ""));
+    rawAmountToken = bahtMatch[0];
+  } else if (symbolMatch) {
+    amount = parseFloat(symbolMatch[1].replace(/,/g, ""));
+    rawAmountToken = symbolMatch[0];
+  } else {
+    // Fall back to the largest number in the text
+    const candidates = [...cleaned.matchAll(/([\d,]+(?:\.\d{1,2})?)/g)]
+      .map(m => ({ val: parseFloat(m[0].replace(/,/g, "")), token: m[0] }))
+      .filter(c => isFinite(c.val) && c.val > 0);
+    if (candidates.length === 0) return null;
+    const best = candidates.reduce((a, b) => (b.val > a.val ? b : a));
+    amount = best.val;
+    rawAmountToken = best.token;
+  }
+
   if (!isFinite(amount) || amount <= 0) return null;
 
-  if (parts.length === 1) return { amount, category: "Other", note: "", type };
+  const note = cleaned
+    .replace(rawAmountToken, "")
+    .replace(/\bบาท\b/g, "")
+    .replace(/฿/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 
-  const maybeCategory = parts[1];
-  const matched = categories.find(c => c.toLowerCase() === maybeCategory.toLowerCase());
-  if (matched) {
-    return { amount, category: matched, note: parts.slice(2).join(" "), type };
-  }
-  return { amount, category: "Other", note: parts.slice(1).join(" "), type };
+  const noteLower = note.toLowerCase();
+  const matched = categories.find(c => noteLower.includes(c.toLowerCase()));
+
+  return { amount, category: matched ?? "Other", note, type };
 }
 
 async function pickPersonalityResponse(
