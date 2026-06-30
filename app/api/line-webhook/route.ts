@@ -235,8 +235,9 @@ async function handleShortcutRequest(
 
   const parsed = parseTransaction(text, categoryNames);
   if (!parsed) {
+    console.log("[shortcut] parseTransaction failed. rawText:", JSON.stringify(text));
     await pushToLine(lineUserId, randomFormatError());
-    return NextResponse.json({ error: "Unrecognized format" }, { status: 400 });
+    return NextResponse.json({ error: "Unrecognized format", receivedText: text }, { status: 400 });
   }
 
   // Smart categorization: scan rawText against the user's category_rules
