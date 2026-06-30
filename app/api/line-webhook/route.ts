@@ -136,7 +136,9 @@ function parseTransaction(
 async function pickPersonalityResponse(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: ReturnType<typeof serviceClient>,
-  category: string
+  category: string,
+  profileId: string,
+  lastResponse: string | null
 ): Promise<string> {
   const FALLBACK = ["บันทึกให้ละจ้า ไม่ต้องบ่นเรื่องเงินเลยนะ!", "จัดไป! บันทึกยอดให้แล้วครับเจ้านาย", "เรียบร้อย! หวังว่าวันนี้จะเหลือเงินกินข้าวนะ"];
   try {
@@ -151,12 +153,26 @@ async function pickPersonalityResponse(
     const matched = responses.filter(
       r => r.category !== "general" && catLower.includes(r.category.toLowerCase())
     );
-    const pool = matched.length > 0
+    const fullPool = matched.length > 0
       ? matched
       : responses.filter(r => r.category === "general");
 
-    if (pool.length === 0) return FALLBACK[Math.floor(Math.random() * FALLBACK.length)];
-    return pool[Math.floor(Math.random() * pool.length)].response_text;
+    if (fullPool.length === 0) return FALLBACK[Math.floor(Math.random() * FALLBACK.length)];
+
+    // Exclude the last-used response so it never repeats consecutively
+    const pool = fullPool.length > 1
+      ? fullPool.filter(r => r.response_text !== lastResponse)
+      : fullPool;
+
+    const chosen = pool[Math.floor(Math.random() * pool.length)].response_text;
+
+    // Persist the chosen response so next call can exclude it
+    await supabase
+      .from("profiles")
+      .update({ line_last_response: chosen })
+      .eq("id", profileId);
+
+    return chosen;
   } catch {
     return FALLBACK[Math.floor(Math.random() * FALLBACK.length)];
   }
@@ -259,7 +275,7 @@ async function handleShortcutRequest(
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, full_name")
+    .select("id, full_name, line_last_response")
     .eq("line_user_id", lineUserId)
     .single();
 
@@ -314,7 +330,7 @@ async function handleShortcutRequest(
     return NextResponse.json({ error: txError.message }, { status: 500 });
   }
 
-  const personality = await pickPersonalityResponse(supabase, parsed.category);
+  const personality = await pickPersonalityResponse(supabase, parsed.category, profile.id, profile.line_last_response ?? null);
   const recipientName = extractRecipientName(text);
   const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, parsed.category === "Other");
   await pushToLine(lineUserId, reply);
@@ -427,7 +443,7 @@ export async function POST(req: NextRequest) {
     // --- Expense recording ---
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, full_name")
+      .select("id, full_name, line_last_response")
       .eq("line_user_id", lineUserId)
       .single();
 
@@ -469,7 +485,7 @@ export async function POST(req: NextRequest) {
     }
 
     const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;
-    const personality = await pickPersonalityResponse(supabase, parsed.category);
+    const personality = await pickPersonalityResponse(supabase, parsed.category, profile.id, (profile as Record<string, unknown>).line_last_response as string ?? null);
     await replyToLine(replyToken, buildSuccessMessage(personality, parsed.amount, catLabel));
   }
 
