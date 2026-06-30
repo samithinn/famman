@@ -134,14 +134,32 @@ function isValidApiKey(provided: string): boolean {
   }
 }
 
+function isValidShortcutKey(provided: string): boolean {
+  const expected = process.env.SHORTCUT_SECRET ?? "";
+  if (!expected || provided.length !== expected.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
+
 async function handleShortcutRequest(
   req: NextRequest,
   body: { userId: string; rawText: string }
 ): Promise<NextResponse> {
-  const authHeader = req.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!isValidApiKey(token)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Accept x-shortcut-key (new) or Authorization: Bearer (legacy)
+  const shortcutKey = req.headers.get("x-shortcut-key") ?? "";
+  if (shortcutKey) {
+    if (!isValidShortcutKey(shortcutKey)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  } else {
+    const authHeader = req.headers.get("authorization") ?? "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!isValidApiKey(token)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   const supabase = serviceClient();
@@ -203,14 +221,17 @@ export async function POST(req: NextRequest) {
     bodyJson = null;
   }
 
-  // iOS Shortcut path: { userId, rawText } with no LINE events
-  if (
-    bodyJson &&
+  // iOS Shortcut path: detected by x-shortcut-key header OR { userId, rawText } body shape
+  const shortcutKeyHeader = req.headers.get("x-shortcut-key") ?? "";
+  const isShortcutByHeader = shortcutKeyHeader !== "";
+  const isShortcutByBody =
+    bodyJson !== null &&
     typeof bodyJson === "object" &&
     "userId" in (bodyJson as object) &&
     "rawText" in (bodyJson as object) &&
-    !("events" in (bodyJson as object))
-  ) {
+    !("events" in (bodyJson as object));
+
+  if (isShortcutByHeader || isShortcutByBody) {
     return handleShortcutRequest(req, bodyJson as { userId: string; rawText: string });
   }
 
