@@ -77,10 +77,10 @@ export default function SettingsView() {
     setLinkLoading(false);
     if (!res.ok) { setLineError(data.error ?? "Failed to connect."); return; }
 
-    const basicId: string | null = data.botBasicId;
     const token: string = data.token;
+    const basicId = process.env.NEXT_PUBLIC_LINE_BOT_BASIC_ID;
     const deepLink = basicId
-      ? `https://line.me/R/oaMessage/${basicId.replace("@", "")}/?link%20${token}`
+      ? `https://line.me/R/oaMessage/${basicId}/?link%20${token}`
       : null;
 
     if (deepLink) {
