@@ -62,17 +62,7 @@ export default function ProfilePage() {
     if (!res.ok) { setLineError(data.error ?? "Failed to connect."); return; }
 
     const token: string = data.token;
-    const basicId = process.env.NEXT_PUBLIC_LINE_BOT_BASIC_ID;
-    const deepLink = basicId
-      ? `https://line.me/R/oaMessage/${basicId}/?link%20${token}`
-      : null;
-
-    if (deepLink) {
-      window.open(deepLink, "_blank");
-    } else {
-      setLineError("Could not open LINE. Please add the bot manually and send: link " + token);
-      return;
-    }
+    window.open(`https://line.me/R/oaMessage/@786vntxk/?link%20${token}`, "_blank");
 
     setLineWaiting(true);
     let attempts = 0;

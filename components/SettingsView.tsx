@@ -78,17 +78,9 @@ export default function SettingsView() {
     if (!res.ok) { setLineError(data.error ?? "Failed to connect."); return; }
 
     const token: string = data.token;
-    const basicId = process.env.NEXT_PUBLIC_LINE_BOT_BASIC_ID;
-    const deepLink = basicId
-      ? `https://line.me/R/oaMessage/${basicId}/?link%20${token}`
-      : null;
+    const deepLink = `https://line.me/R/oaMessage/@786vntxk/?link%20${token}`;
 
-    if (deepLink) {
-      window.open(deepLink, "_blank");
-    } else {
-      setLineError("Could not open LINE. Please add the bot manually and send: link " + token);
-      return;
-    }
+    window.open(deepLink, "_blank");
 
     setLineWaiting(true);
     // Poll every 3 s until linked (max 10 min)
