@@ -20,6 +20,14 @@ export type Category = {
   user_id: string;
 };
 
+export type CategoryRule = {
+  id: string;
+  user_id: string;
+  keyword: string;
+  category: string;
+  created_at: string;
+};
+
 export type Transaction = {
   id: string;
   created_at: string;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, BookmarkPlus } from "lucide-react";
 import { supabase, Transaction } from "@/lib/supabase";
 
 interface EditTransactionModalProps {
@@ -21,6 +21,12 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
+
+  const [showSaveRule, setShowSaveRule] = useState(false);
+  const [ruleKeyword, setRuleKeyword] = useState("");
+  const [ruleLoading, setRuleLoading] = useState(false);
+  const [ruleError, setRuleError] = useState("");
+  const [ruleSaved, setRuleSaved] = useState(false);
   const [catLoading, setCatLoading] = useState(true);
 
   useEffect(() => {
@@ -38,6 +44,25 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
         setCatLoading(false);
       });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSaveRule = async () => {
+    if (!ruleKeyword.trim()) return;
+    setRuleLoading(true);
+    setRuleError("");
+    const res = await fetch("/api/category-rules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyword: ruleKeyword.trim(), category: form.category }),
+    });
+    setRuleLoading(false);
+    if (!res.ok) {
+      const body = await res.json();
+      setRuleError(body.error ?? "Failed to save rule.");
+    } else {
+      setRuleSaved(true);
+      setTimeout(() => { setShowSaveRule(false); setRuleSaved(false); }, 1500);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -169,6 +194,60 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
               className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
               style={{ border: "2px solid #f3e8ff", color: "#374151" }}
             />
+          </div>
+
+          {/* Save as Rule */}
+          <div>
+            {!showSaveRule ? (
+              <button
+                type="button"
+                onClick={() => { setShowSaveRule(true); setRuleKeyword(form.note.trim()); setRuleError(""); }}
+                className="text-xs font-semibold flex items-center gap-1.5 px-1"
+                style={{ color: "#8b5cf6" }}
+              >
+                <BookmarkPlus size={13} />
+                Save as auto-categorization rule
+              </button>
+            ) : (
+              <div className="rounded-xl p-3 space-y-2.5" style={{ background: "#f3e8ff", border: "1px solid #ddd6fe" }}>
+                <p className="text-xs font-extrabold" style={{ color: "#7c3aed" }}>💡 SAVE AS RULE</p>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: "#7c3aed" }}>Keyword to match in receipt text</label>
+                  <input
+                    type="text"
+                    value={ruleKeyword}
+                    onChange={e => setRuleKeyword(e.target.value)}
+                    placeholder="e.g. ข้าว, coffee, grab"
+                    className="w-full rounded-lg px-3 py-2 text-xs font-semibold outline-none"
+                    style={{ border: "1.5px solid #ddd6fe", color: "#374151", background: "#fff" }}
+                  />
+                </div>
+                <p className="text-xs font-semibold" style={{ color: "#6d28d9" }}>
+                  → will auto-assign to <strong>{form.category}</strong>
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveRule}
+                    disabled={ruleLoading || !ruleKeyword.trim()}
+                    className="flex-1 py-2 rounded-lg text-xs font-extrabold text-white"
+                    style={{ background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", opacity: ruleLoading || !ruleKeyword.trim() ? 0.6 : 1 }}
+                  >
+                    {ruleLoading ? "Saving…" : "Save Rule"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowSaveRule(false); setRuleError(""); setRuleSaved(false); }}
+                    className="px-4 py-2 rounded-lg text-xs font-extrabold"
+                    style={{ background: "#ede9fe", color: "#7c3aed" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {ruleError && <p className="text-xs font-semibold" style={{ color: "#ef4444" }}>{ruleError}</p>}
+                {ruleSaved && <p className="text-xs font-bold" style={{ color: "#10b981" }}>✓ Rule saved!</p>}
+              </div>
+            )}
           </div>
 
           {error && (

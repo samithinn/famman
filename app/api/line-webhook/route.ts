@@ -239,6 +239,19 @@ async function handleShortcutRequest(
     return NextResponse.json({ error: "Unrecognized format" }, { status: 400 });
   }
 
+  // Smart categorization: scan rawText against the user's category_rules
+  if (parsed.category === "Other") {
+    const { data: rules } = await supabase
+      .from("category_rules")
+      .select("keyword, category")
+      .eq("user_id", profile.id);
+    const lowerText = text.toLowerCase();
+    const hit = (rules ?? []).find(
+      (r: { keyword: string; category: string }) => lowerText.includes(r.keyword)
+    );
+    if (hit) parsed.category = hit.category;
+  }
+
   const { data: authUser } = await supabase.auth.admin.getUserById(profile.id);
   const spender =
     profile.full_name ||
@@ -257,7 +270,11 @@ async function handleShortcutRequest(
 
   const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;
   const personality = await pickPersonalityResponse(supabase, parsed.category);
-  await pushToLine(lineUserId, buildSuccessMessage(personality, parsed.amount, catLabel));
+  let reply = buildSuccessMessage(personality, parsed.amount, catLabel);
+  if (parsed.category === "Other") {
+    reply += "\n💡 ยังจัดหมวดไม่ได้ แก้ที่เว็บได้เลยนะ!";
+  }
+  await pushToLine(lineUserId, reply);
 
   return NextResponse.json({ ok: true });
 }

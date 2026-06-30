@@ -85,3 +85,19 @@ WHERE t.spender IN ('Husband', 'Wife');
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_user_id text UNIQUE;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_link_token text UNIQUE;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_link_token_expires_at timestamptz;
+
+-- 11. Category rules for smart auto-categorization (iOS Shortcut receipt parsing)
+CREATE TABLE IF NOT EXISTS category_rules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  keyword text NOT NULL,
+  category text NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE category_rules ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users manage own category rules" ON category_rules;
+CREATE POLICY "users manage own category rules"
+  ON category_rules FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);

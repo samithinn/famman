@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User, MessageSquare } from "lucide-react";
+import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User, MessageSquare, Zap } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 type Category = { id: string; name: string };
@@ -41,6 +41,16 @@ export default function SettingsView() {
   const [changingRole, setChangingRole] = useState<string | null>(null);
   const [usersError, setUsersError] = useState("");
 
+  // Category rules
+  type CategoryRule = { id: string; keyword: string; category: string };
+  const [rules, setRules] = useState<CategoryRule[]>([]);
+  const [rulesLoading, setRulesLoading] = useState(true);
+  const [rulesError, setRulesError] = useState("");
+  const [newRuleKeyword, setNewRuleKeyword] = useState("");
+  const [newRuleCategory, setNewRuleCategory] = useState("");
+  const [addingRule, setAddingRule] = useState(false);
+  const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
+
   // Admin: LINE bot responses
   const [lineResponses, setLineResponses] = useState<LineResponse[]>([]);
   const [lineRespLoading, setLineRespLoading] = useState(false);
@@ -57,6 +67,7 @@ export default function SettingsView() {
     fetchProfile();
     fetchCategories();
     fetchLineStatus();
+    fetchCategoryRules();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchProfile() {
@@ -177,6 +188,54 @@ export default function SettingsView() {
     const { data } = await supabase.from("categories").select("id, name").order("name");
     setCategories((data as Category[]) ?? []);
     setCatLoading(false);
+  }
+
+  async function fetchCategoryRules() {
+    setRulesLoading(true);
+    setRulesError("");
+    const res = await fetch("/api/category-rules");
+    if (!res.ok) { setRulesError("Failed to load rules."); setRulesLoading(false); return; }
+    const { rules: list } = await res.json();
+    setRules(list);
+    setRulesLoading(false);
+  }
+
+  async function addCategoryRule() {
+    const keyword = newRuleKeyword.trim();
+    const category = newRuleCategory.trim();
+    if (!keyword || !category) return;
+    setAddingRule(true);
+    setRulesError("");
+    const res = await fetch("/api/category-rules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyword, category }),
+    });
+    if (!res.ok) {
+      const body = await res.json();
+      setRulesError(body.error ?? "Failed to add rule.");
+      setAddingRule(false);
+      return;
+    }
+    const { rule } = await res.json();
+    setRules(prev => [...prev, rule].sort((a, b) => a.keyword.localeCompare(b.keyword)));
+    setNewRuleKeyword("");
+    setNewRuleCategory("");
+    setAddingRule(false);
+  }
+
+  async function deleteCategoryRule(id: string) {
+    setDeletingRuleId(id);
+    setRulesError("");
+    const res = await fetch(`/api/category-rules/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json();
+      setRulesError(body.error ?? "Failed to delete rule.");
+      setDeletingRuleId(null);
+      return;
+    }
+    setRules(prev => prev.filter(r => r.id !== id));
+    setDeletingRuleId(null);
   }
 
   async function addCategory() {
@@ -688,6 +747,94 @@ export default function SettingsView() {
                       </button>
                     </>
                   )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Auto-Categorization Rules */}
+        <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+          <div className="flex items-center gap-2 mb-1">
+            <Zap size={15} style={{ color: "#f59e0b" }} />
+            <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Auto-Categorization Rules</h2>
+          </div>
+          <p className="text-xs font-semibold mb-4" style={{ color: "#9ca3af" }}>
+            When your Shortcut text contains a keyword, the category is assigned automatically. You can also add rules from the Edit Transaction screen.
+          </p>
+
+          <div className="flex gap-2 mb-4">
+            <input
+              type="text"
+              placeholder="keyword (e.g. ข้าว)"
+              value={newRuleKeyword}
+              onChange={e => setNewRuleKeyword(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && addCategoryRule()}
+              className="flex-1 rounded-xl px-3 py-2 text-xs font-semibold outline-none"
+              style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+            />
+            <select
+              value={newRuleCategory}
+              onChange={e => setNewRuleCategory(e.target.value)}
+              className="w-36 rounded-xl px-2 py-2 text-xs font-semibold outline-none cursor-pointer"
+              style={{ border: "2px solid #f3e8ff", color: newRuleCategory ? "#374151" : "#9ca3af", fontFamily: "Nunito" }}
+            >
+              <option value="">Category…</option>
+              {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
+            <button
+              onClick={addCategoryRule}
+              disabled={addingRule || !newRuleKeyword.trim() || !newRuleCategory}
+              className="px-3 py-2 rounded-xl text-xs font-extrabold text-white flex items-center gap-1 flex-shrink-0"
+              style={{
+                background: "linear-gradient(135deg, #f59e0b, #d97706)",
+                opacity: addingRule || !newRuleKeyword.trim() || !newRuleCategory ? 0.5 : 1,
+              }}
+            >
+              {addingRule ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} /> Add</>}
+            </button>
+          </div>
+
+          {rulesError && (
+            <p className="text-xs font-semibold px-3 py-2 rounded-xl mb-3" style={{ background: "#fef2f2", color: "#ef4444" }}>
+              {rulesError}
+            </p>
+          )}
+
+          {rulesLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 size={20} className="animate-spin" style={{ color: "#a78bfa" }} />
+            </div>
+          ) : rules.length === 0 ? (
+            <p className="text-xs font-semibold text-center py-4" style={{ color: "#9ca3af" }}>
+              No rules yet. Add one above to start auto-categorizing.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {rules.map(rule => (
+                <div
+                  key={rule.id}
+                  className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+                  style={{ background: "#fafafa", border: "1px solid #f3e8ff" }}
+                >
+                  <span
+                    className="text-xs font-extrabold px-2 py-0.5 rounded-full flex-shrink-0"
+                    style={{ background: "#fef3c7", color: "#d97706", border: "1px solid #fde68a" }}
+                  >
+                    {rule.keyword}
+                  </span>
+                  <span className="text-xs font-semibold flex-shrink-0" style={{ color: "#9ca3af" }}>→</span>
+                  <span className="flex-1 text-xs font-bold" style={{ color: "#374151" }}>{rule.category}</span>
+                  <button
+                    onClick={() => deleteCategoryRule(rule.id)}
+                    disabled={deletingRuleId === rule.id}
+                    className="p-1 rounded-lg flex-shrink-0"
+                    style={{ color: "#ef4444" }}
+                  >
+                    {deletingRuleId === rule.id
+                      ? <Loader2 size={13} className="animate-spin" />
+                      : <Trash2 size={13} />}
+                  </button>
                 </div>
               ))}
             </div>
