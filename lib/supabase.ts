@@ -5,6 +5,14 @@ export const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+export type Profile = {
+  id: string;
+  full_name: string | null;
+  dob: string | null;
+  photo_url: string | null;
+  updated_at: string;
+};
+
 export type Transaction = {
   id: string;
   created_at: string;

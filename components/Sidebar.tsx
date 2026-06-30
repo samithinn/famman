@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 
 export type View = "dashboard" | "transactions" | "report" | "settings";
@@ -20,6 +21,7 @@ const navItems: { label: string; view: View; icon: string }[] = [
 
 export default function Sidebar({ activeView, onViewChange, onAddTransaction }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const router = useRouter();
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full" style={{ background: "#f0ebff" }}>
@@ -57,6 +59,16 @@ export default function Sidebar({ activeView, onViewChange, onAddTransaction }: 
           );
         })}
       </nav>
+
+      {/* Profile link */}
+        <button
+          onClick={() => { router.push("/profile"); setMobileOpen(false); }}
+          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold transition-all duration-150"
+          style={{ color: "#7c3aed" }}
+        >
+          <span className="text-base">👤</span>
+          <span>Profile</span>
+        </button>
 
       {/* Auto-sync panel */}
       <div className="p-3">

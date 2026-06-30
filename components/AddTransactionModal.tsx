@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { X, Loader2, Upload } from "lucide-react";
 import { supabase, Transaction } from "@/lib/supabase";
 
 const CATEGORIES = [
@@ -15,25 +15,84 @@ interface AddTransactionModalProps {
   onSuccess: (transaction: Transaction) => void;
 }
 
+type Mode = "manual" | "csv";
+type CSVRow = { date: string; amount: string; category: string; note: string };
+
+function parseCSV(text: string): { rows: CSVRow[]; errors: string[] } {
+  const lines = text.trim().split("\n").filter(l => l.trim());
+  if (!lines.length) return { rows: [], errors: ["File is empty."] };
+
+  const firstLower = lines[0].toLowerCase();
+  const hasHeader = firstLower.includes("date") && firstLower.includes("amount");
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  const rows: CSVRow[] = [];
+  const errors: string[] = [];
+
+  dataLines.forEach((line, i) => {
+    const rowNum = i + (hasHeader ? 2 : 1);
+    const parts = line.split(",").map(s => s.trim().replace(/^"|"$/g, ""));
+    const [rawDate = "", rawAmount = "", rawCategory = "", rawNote = ""] = parts;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+      errors.push(`Row ${rowNum}: Invalid date "${rawDate}" — use YYYY-MM-DD`);
+    }
+    const amt = parseFloat(rawAmount);
+    if (!rawAmount || isNaN(amt) || amt <= 0) {
+      errors.push(`Row ${rowNum}: Invalid amount "${rawAmount}" — must be a positive number`);
+    }
+    if (!rawCategory || !CATEGORIES.includes(rawCategory)) {
+      errors.push(`Row ${rowNum}: Unknown category "${rawCategory}"`);
+    }
+
+    rows.push({ date: rawDate, amount: rawAmount, category: rawCategory, note: rawNote });
+  });
+
+  return { rows, errors };
+}
+
+async function resolveSpender() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
+  const spender =
+    profile?.full_name ||
+    user.user_metadata?.full_name ||
+    user.user_metadata?.name ||
+    user.email?.split("@")[0] ||
+    "Unknown";
+  return { user, spender };
+}
+
 export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddTransactionModalProps) {
   const today = new Date().toISOString().split("T")[0];
+  const [mode, setMode] = useState<Mode>("manual");
   const [form, setForm] = useState({ date: today, amount: "", category: CATEGORIES[0], note: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [username, setUsername] = useState<string | null>(null);
 
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [csvRows, setCsvRows] = useState<CSVRow[]>([]);
+  const [csvErrors, setCsvErrors] = useState<string[]>([]);
+  const [csvFileName, setCsvFileName] = useState("");
+  const [csvLoading, setCsvLoading] = useState(false);
+
   useEffect(() => {
     if (!isOpen) return;
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      const name = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "Unknown";
-      setUsername(name);
+    setMode("manual");
+    setError("");
+    setCsvRows([]);
+    setCsvErrors([]);
+    setCsvFileName("");
+    resolveSpender().then(result => {
+      if (result) setUsername(result.spender);
     });
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!form.amount || isNaN(parseFloat(form.amount)) || parseFloat(form.amount) <= 0) {
@@ -41,26 +100,13 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
       return;
     }
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setError("Not authenticated. Please sign in again.");
-      setLoading(false);
-      return;
-    }
-
-    const spender = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "Unknown";
-    const payload: Record<string, unknown> = {
-      date: form.date,
-      amount: parseFloat(form.amount),
-      category: form.category,
-      note: form.note,
-      user_id: user.id,
-      spender,
-    };
+    const result = await resolveSpender();
+    if (!result) { setError("Not authenticated. Please sign in again."); setLoading(false); return; }
+    const { user, spender } = result;
 
     const { data, error: dbError } = await supabase
       .from("transactions")
-      .insert([payload])
+      .insert([{ date: form.date, amount: parseFloat(form.amount), category: form.category, note: form.note, user_id: user.id, spender }])
       .select()
       .single();
 
@@ -68,6 +114,50 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
     if (dbError) { setError(dbError.message); return; }
     onSuccess(data as Transaction);
     setForm({ date: today, amount: "", category: CATEGORIES[0], note: "" });
+    onClose();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFileName(file.name);
+    setCsvRows([]);
+    setCsvErrors([]);
+    setError("");
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const { rows, errors } = parseCSV(ev.target?.result as string);
+      setCsvRows(rows);
+      setCsvErrors(errors);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCSVImport = async () => {
+    if (csvErrors.length > 0 || csvRows.length === 0) return;
+    setCsvLoading(true);
+    setError("");
+    const result = await resolveSpender();
+    if (!result) { setError("Not authenticated."); setCsvLoading(false); return; }
+    const { user, spender } = result;
+
+    const payload = csvRows.map(row => ({
+      date: row.date,
+      amount: parseFloat(row.amount),
+      category: row.category,
+      note: row.note,
+      user_id: user.id,
+      spender,
+    }));
+
+    const { data, error: dbError } = await supabase.from("transactions").insert(payload).select();
+    setCsvLoading(false);
+    if (dbError) { setError(dbError.message); return; }
+    if (data && data.length > 0) onSuccess(data[0] as Transaction);
+    setCsvRows([]);
+    setCsvErrors([]);
+    setCsvFileName("");
+    if (fileRef.current) fileRef.current.value = "";
     onClose();
   };
 
@@ -80,7 +170,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
       />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 z-10">
         {/* Header */}
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-black" style={{ color: "#1f2937" }}>Add Expense 💳</h2>
             <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>
@@ -96,79 +186,159 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Date */}
-          <div>
-            <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>DATE</label>
-            <input
-              type="date"
-              value={form.date}
-              onChange={(e) => setForm({ ...form, date: e.target.value })}
-              className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
-              style={{ border: "2px solid #f3e8ff", color: "#374151" }}
-              required
-            />
-          </div>
-
-          {/* Amount */}
-          <div>
-            <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>AMOUNT (฿)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              placeholder="0.00"
-              value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
-              style={{ border: "2px solid #f3e8ff", color: "#374151" }}
-              required
-            />
-          </div>
-
-          {/* Category */}
-          <div>
-            <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>CATEGORY</label>
-            <select
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none cursor-pointer"
-              style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+        {/* Mode tabs */}
+        <div className="flex rounded-xl overflow-hidden mb-5" style={{ border: "2px solid #f3e8ff" }}>
+          {(["manual", "csv"] as Mode[]).map(m => (
+            <button
+              key={m}
+              onClick={() => { setMode(m); setError(""); }}
+              className="flex-1 py-2 text-xs font-extrabold transition-all"
+              style={
+                mode === m
+                  ? { background: "linear-gradient(135deg, #ec4899, #8b5cf6)", color: "#fff" }
+                  : { color: "#7c3aed", background: "transparent" }
+              }
             >
-              {CATEGORIES.map((cat) => <option key={cat}>{cat}</option>)}
-            </select>
+              {m === "manual" ? "✏️ Manual Entry" : "📁 CSV Import"}
+            </button>
+          ))}
+        </div>
+
+        {mode === "manual" ? (
+          <form onSubmit={handleManualSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>DATE</label>
+              <input
+                type="date"
+                value={form.date}
+                onChange={e => setForm({ ...form, date: e.target.value })}
+                className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
+                style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>AMOUNT (฿)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="0.00"
+                value={form.amount}
+                onChange={e => setForm({ ...form, amount: e.target.value })}
+                className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
+                style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>CATEGORY</label>
+              <select
+                value={form.category}
+                onChange={e => setForm({ ...form, category: e.target.value })}
+                className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none cursor-pointer"
+                style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+              >
+                {CATEGORIES.map(cat => <option key={cat}>{cat}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>NOTE</label>
+              <input
+                type="text"
+                placeholder="What was this for?"
+                value={form.note}
+                onChange={e => setForm({ ...form, note: e.target.value })}
+                className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
+                style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+              />
+            </div>
+
+            {error && (
+              <p className="text-xs font-semibold px-3 py-2 rounded-xl" style={{ background: "#fef2f2", color: "#ef4444" }}>{error}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
+              style={{
+                background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
+                boxShadow: "0 4px 14px rgba(236,72,153,0.35)",
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              {loading ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : "Save Expense 💾"}
+            </button>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            {/* Format hint */}
+            <div className="rounded-xl p-3 text-xs" style={{ background: "#f8f4ff", border: "1px solid #e9d5ff", color: "#7c3aed" }}>
+              <div className="font-extrabold mb-1">Expected CSV format (columns):</div>
+              <code className="font-bold">date, amount, category, note</code>
+              <div className="mt-1 opacity-60">e.g. 2026-06-15,350,Food &amp; Dining,Lunch at café</div>
+              <div className="mt-1 opacity-60">Header row optional. Note column is optional.</div>
+            </div>
+
+            {/* File picker */}
+            <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFileChange} />
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="w-full py-2.5 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 transition-all"
+              style={{ border: "2px dashed #e9d5ff", color: "#7c3aed", background: "#faf7ff" }}
+            >
+              <Upload size={16} />
+              {csvFileName || "Choose CSV file"}
+            </button>
+
+            {/* Validation errors */}
+            {csvErrors.length > 0 && (
+              <div
+                className="rounded-xl p-3 space-y-1 max-h-40 overflow-y-auto"
+                style={{ background: "#fef2f2", border: "1px solid #fecaca" }}
+              >
+                <div className="text-xs font-extrabold mb-1" style={{ color: "#ef4444" }}>
+                  {csvErrors.length} validation error{csvErrors.length !== 1 ? "s" : ""} — fix and re-upload
+                </div>
+                {csvErrors.map((err, i) => (
+                  <p key={i} className="text-xs font-semibold" style={{ color: "#ef4444" }}>{err}</p>
+                ))}
+              </div>
+            )}
+
+            {/* Valid rows ready */}
+            {csvRows.length > 0 && csvErrors.length === 0 && (
+              <div className="rounded-xl px-3 py-2.5" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                <p className="text-xs font-extrabold" style={{ color: "#15803d" }}>
+                  ✓ {csvRows.length} row{csvRows.length !== 1 ? "s" : ""} validated — ready to import
+                </p>
+              </div>
+            )}
+
+            {error && (
+              <p className="text-xs font-semibold px-3 py-2 rounded-xl" style={{ background: "#fef2f2", color: "#ef4444" }}>{error}</p>
+            )}
+
+            <button
+              onClick={handleCSVImport}
+              disabled={csvRows.length === 0 || csvErrors.length > 0 || csvLoading}
+              className="w-full py-3 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
+              style={{
+                background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
+                boxShadow: "0 4px 14px rgba(236,72,153,0.35)",
+                opacity: csvRows.length === 0 || csvErrors.length > 0 || csvLoading ? 0.4 : 1,
+              }}
+            >
+              {csvLoading
+                ? <><Loader2 size={16} className="animate-spin" /> Importing…</>
+                : `Import ${csvRows.length || 0} Row${csvRows.length !== 1 ? "s" : ""} 📥`}
+            </button>
           </div>
-
-          {/* Note */}
-          <div>
-            <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>NOTE</label>
-            <input
-              type="text"
-              placeholder="What was this for?"
-              value={form.note}
-              onChange={(e) => setForm({ ...form, note: e.target.value })}
-              className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
-              style={{ border: "2px solid #f3e8ff", color: "#374151" }}
-            />
-          </div>
-
-          {error && (
-            <p className="text-xs font-semibold px-3 py-2 rounded-xl" style={{ background: "#fef2f2", color: "#ef4444" }}>{error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
-            style={{
-              background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
-              boxShadow: "0 4px 14px rgba(236,72,153,0.35)",
-              opacity: loading ? 0.7 : 1,
-            }}
-          >
-            {loading ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : "Save Expense 💾"}
-          </button>
-        </form>
+        )}
       </div>
     </div>
   );
