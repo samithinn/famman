@@ -102,6 +102,28 @@ async function pickPersonalityResponse(
   }
 }
 
+const FORMAT_ERROR_MESSAGES = [
+  "พิมพ์อะไรมาเนี่ยยย อ่านไม่ออกโว้ย! 😅 พิมพ์ยอดเงินขึ้นมาก่อนสิเจ้านาย เช่น '500 food' เอาใหม่ๆ!",
+  "โอ๊ยยย บอทสับสน! 😵‍💫 จะให้บันทึกกี่บาทก็พิมพ์ตัวเลขมานำหน้าก่อนเลยครับพี่! ลองพิมพ์ใหม่นะ เช่น '50 กาแฟ'",
+  "เห้ยๆ พิมพ์ผิดป่าว! บอทรับได้แค่ [ตัวเลข] ตามด้วย [หมวดหมู่/โน้ต] นะจ๊ะ 😤 เช่น '120 food' เข้าใจมะ? ลองใหม่!",
+  "อ่านไม่ออกจ้าาา ภาษามนุษย์ต่างดาวปะเนี่ย? 👽 พิมพ์ยอดเงินเป็นตัวเลขมาก่อนเลย! เช่น '300 fuel'",
+  "ใจเย็นๆ ลูกพี่! ค่อยๆ พิมพ์นะ... เอา 'ตัวเลข' ขึ้นก่อน แล้วเว้นวรรคตามด้วย 'คำอธิบาย' นะครับ เช่น '200 ช้อปปิ้ง' ลองใหม่นะจ๊ะ!",
+];
+
+function randomFormatError(): string {
+  return FORMAT_ERROR_MESSAGES[Math.floor(Math.random() * FORMAT_ERROR_MESSAGES.length)];
+}
+
+function buildSuccessMessage(personality: string, amount: number, catLabel: string): string {
+  const summaries = [
+    `(จัดไป: ฿${amount.toLocaleString()} - ${catLabel})`,
+    `(บันทึกเรียบร้อยละจ้า ฿${amount.toLocaleString()} หมวด ${catLabel})`,
+    `(เช็คให้ละ ฿${amount.toLocaleString()} สำหรับ ${catLabel})`,
+  ];
+  const summary = summaries[Math.floor(Math.random() * summaries.length)];
+  return `${personality} ${summary}`;
+}
+
 function isValidApiKey(provided: string): boolean {
   const expected = process.env.WEBHOOK_API_KEY ?? "";
   if (!expected || provided.length !== expected.length) return false;
@@ -144,7 +166,7 @@ async function handleShortcutRequest(
 
   const parsed = parseTransaction(text, categoryNames);
   if (!parsed) {
-    await pushToLine(lineUserId, "Format not recognized. Try:\n500 Food & Dining  (expense)\n+5000 Salary  (income)\n(+ prefix = income, no prefix = expense)");
+    await pushToLine(lineUserId, randomFormatError());
     return NextResponse.json({ error: "Unrecognized format" }, { status: 400 });
   }
 
@@ -165,12 +187,8 @@ async function handleShortcutRequest(
   }
 
   const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;
-  const typeLabel = parsed.type === "income" ? "Income +" : "Expense";
   const personality = await pickPersonalityResponse(supabase, parsed.category);
-  await pushToLine(
-    lineUserId,
-    `${personality}\n\nSaved ✓ [${typeLabel}]\n฿${parsed.amount.toLocaleString()} · ${catLabel}\n${date}`
-  );
+  await pushToLine(lineUserId, buildSuccessMessage(personality, parsed.amount, catLabel));
 
   return NextResponse.json({ ok: true });
 }
@@ -289,10 +307,7 @@ export async function POST(req: NextRequest) {
 
     const parsed = parseTransaction(text, categoryNames);
     if (!parsed) {
-      await replyToLine(
-        replyToken,
-        "Format not recognized. Try:\n500 Food & Dining  (expense)\n+5000 Salary  (income)\n(+ prefix = income, no prefix = expense)"
-      );
+      await replyToLine(replyToken, randomFormatError());
       continue;
     }
 
@@ -314,12 +329,8 @@ export async function POST(req: NextRequest) {
     }
 
     const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;
-    const typeLabel = parsed.type === "income" ? "Income +" : "Expense";
     const personality = await pickPersonalityResponse(supabase, parsed.category);
-    await replyToLine(
-      replyToken,
-      `${personality}\n\nSaved ✓ [${typeLabel}]\n฿${parsed.amount.toLocaleString()} · ${catLabel}\n${date}`
-    );
+    await replyToLine(replyToken, buildSuccessMessage(personality, parsed.amount, catLabel));
   }
 
   return NextResponse.json({ ok: true });
