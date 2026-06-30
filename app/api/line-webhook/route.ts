@@ -93,7 +93,7 @@ function parseTransaction(
     rawAmountToken = symbolMatch[0];
   } else {
     // Priority: numbers with exactly 2 decimal places look like prices (50.00, 1,234.00)
-    const decimalCandidates = [...cleaned.matchAll(/([\d,]+\.\d{2})(?!\d)/g)]
+    const decimalCandidates = Array.from(cleaned.matchAll(/([\d,]+\.\d{2})(?!\d)/g)]
       .map(m => ({ val: parseFloat(m[0].replace(/,/g, "")), token: m[0] }))
       .filter(c => isFinite(c.val) && c.val > 0);
 
@@ -104,7 +104,7 @@ function parseTransaction(
       rawAmountToken = best.token;
     } else {
       // Last resort: largest number, skipping year-like values (1900–2099)
-      const candidates = [...cleaned.matchAll(/([\d,]+(?:\.\d{1,2})?)/g)]
+      const candidates = Array.from(cleaned.matchAll(/([\d,]+(?:\.\d{1,2})?)/g)]
         .map(m => ({ val: parseFloat(m[0].replace(/,/g, "")), token: m[0] }))
         .filter(c => {
           if (!isFinite(c.val) || c.val <= 0) return false;
