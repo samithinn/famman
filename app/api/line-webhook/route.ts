@@ -259,7 +259,7 @@ async function handleShortcutRequest(
     authUser?.user?.email?.split("@")[0] ||
     null;
 
-  const date = new Date().toISOString().split("T")[0];
+  const date = new Date().toISOString();
   const { error: txError } = await supabase
     .from("transactions")
     .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id, type: parsed.type }]);

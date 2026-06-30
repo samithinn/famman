@@ -24,8 +24,13 @@ interface RecentTransactionsProps {
 }
 
 function formatDate(dateStr: string) {
-  const d = new Date(dateStr + "T00:00:00");
+  const d = new Date(dateStr.includes("T") ? dateStr : dateStr + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" });
+}
+
+function formatTime(dateStr: string): string | null {
+  if (!dateStr.includes("T")) return null;
+  return new Date(dateStr).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 
@@ -109,7 +114,12 @@ export default function RecentTransactions({ transactions, limit = 10, onEdit, o
                   className="py-3 text-xs font-bold"
                   style={{ color: "#9ca3af", paddingLeft: 10, paddingRight: 10 }}
                 >
-                  {formatDate(t.date)}
+                  <div>{formatDate(t.date)}</div>
+                  {formatTime(t.date) && (
+                    <div className="text-[10px] font-semibold mt-0.5" style={{ color: "#c4b5fd" }}>
+                      {formatTime(t.date)}
+                    </div>
+                  )}
                 </td>
                 {/* Amount */}
                 <td

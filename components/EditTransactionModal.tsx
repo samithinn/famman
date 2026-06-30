@@ -10,10 +10,16 @@ interface EditTransactionModalProps {
   onSuccess: (updated: Transaction) => void;
 }
 
+function toDatetimeLocal(isoStr: string): string {
+  const d = new Date(isoStr.includes("T") ? isoStr : isoStr + "T00:00:00");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function EditTransactionModal({ transaction, onClose, onSuccess }: EditTransactionModalProps) {
   const [txType, setTxType] = useState<"expense" | "income">(transaction.type ?? "expense");
   const [form, setForm] = useState({
-    date: transaction.date,
+    date: toDatetimeLocal(transaction.date),
     amount: String(transaction.amount),
     category: transaction.category,
     note: transaction.note ?? "",
@@ -139,9 +145,9 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Date */}
           <div>
-            <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>DATE</label>
+            <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>DATE & TIME</label>
             <input
-              type="date"
+              type="datetime-local"
               value={form.date}
               onChange={(e) => setForm({ ...form, date: e.target.value })}
               className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"

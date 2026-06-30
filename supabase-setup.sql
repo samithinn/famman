@@ -101,3 +101,6 @@ DROP POLICY IF EXISTS "users manage own category rules" ON category_rules;
 CREATE POLICY "users manage own category rules"
   ON category_rules FOR ALL TO authenticated
   USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- 12. Change transactions.date from date to timestamptz to store time of transaction
+ALTER TABLE transactions ALTER COLUMN date TYPE timestamptz USING date::timestamptz;

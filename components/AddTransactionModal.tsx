@@ -65,11 +65,16 @@ async function resolveSpender() {
   return { user, spender };
 }
 
+function localNow() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddTransactionModalProps) {
-  const today = new Date().toISOString().split("T")[0];
   const [mode, setMode] = useState<Mode>("manual");
   const [txType, setTxType] = useState<TxType>("expense");
-  const [form, setForm] = useState({ date: today, amount: "", category: "", note: "" });
+  const [form, setForm] = useState({ date: localNow(), amount: "", category: "", note: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [username, setUsername] = useState<string | null>(null);
@@ -90,7 +95,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
     setCsvRows([]);
     setCsvErrors([]);
     setCsvFileName("");
-    setForm({ date: today, amount: "", category: "", note: "" });
+    setForm({ date: localNow(), amount: "", category: "", note: "" });
     resolveSpender().then(result => {
       if (result) setUsername(result.spender);
     });
@@ -138,7 +143,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
     setLoading(false);
     if (dbError) { setError(dbError.message); return; }
     onSuccess(data as Transaction);
-    setForm({ date: today, amount: "", category: categories[0] ?? "", note: "" });
+    setForm({ date: localNow(), amount: "", category: categories[0] ?? "", note: "" });
     onClose();
   };
 
@@ -257,9 +262,9 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
         {mode === "manual" ? (
           <form onSubmit={handleManualSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>DATE</label>
+              <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>DATE & TIME</label>
               <input
-                type="date"
+                type="datetime-local"
                 value={form.date}
                 onChange={e => setForm({ ...form, date: e.target.value })}
                 className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
