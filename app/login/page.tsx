@@ -1,9 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
+  const [consented, setConsented] = useState(false);
+
   const handleGoogleLogin = async () => {
+    if (!consented) return;
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -28,10 +32,27 @@ export default function LoginPage() {
           </p>
         </div>
 
+        <label className="flex items-start gap-3 cursor-pointer w-full">
+          <input
+            type="checkbox"
+            checked={consented}
+            onChange={(e) => setConsented(e.target.checked)}
+            className="mt-0.5 accent-pink-500 w-4 h-4 flex-shrink-0"
+          />
+          <span className="text-xs font-semibold leading-relaxed" style={{ color: "#6b7280" }}>
+            I understand that the app administrator can view all expense data entered by any user on this platform.
+          </span>
+        </label>
+
         <button
           onClick={handleGoogleLogin}
-          className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border-2 font-bold text-sm transition-all hover:shadow-md"
-          style={{ borderColor: "#f3e8ff", color: "#374151" }}
+          disabled={!consented}
+          className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border-2 font-bold text-sm transition-all"
+          style={{
+            borderColor: consented ? "#f3e8ff" : "#f3f4f6",
+            color: consented ? "#374151" : "#d1d5db",
+            cursor: consented ? "pointer" : "not-allowed",
+          }}
         >
           <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
             <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
@@ -43,7 +64,7 @@ export default function LoginPage() {
         </button>
 
         <p className="text-xs font-semibold text-center" style={{ color: "#d1d5db" }}>
-          Only family members with access can log in
+          Open to anyone with a Google account
         </p>
       </div>
     </div>
