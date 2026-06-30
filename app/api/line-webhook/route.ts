@@ -92,14 +92,30 @@ function parseTransaction(
     amount = parseFloat(symbolMatch[1].replace(/,/g, ""));
     rawAmountToken = symbolMatch[0];
   } else {
-    // Fall back to the largest number in the text
-    const candidates = [...cleaned.matchAll(/([\d,]+(?:\.\d{1,2})?)/g)]
+    // Priority: numbers with exactly 2 decimal places look like prices (50.00, 1,234.00)
+    const decimalCandidates = [...cleaned.matchAll(/([\d,]+\.\d{2})(?!\d)/g)]
       .map(m => ({ val: parseFloat(m[0].replace(/,/g, "")), token: m[0] }))
       .filter(c => isFinite(c.val) && c.val > 0);
-    if (candidates.length === 0) return null;
-    const best = candidates.reduce((a, b) => (b.val > a.val ? b : a));
-    amount = best.val;
-    rawAmountToken = best.token;
+
+    if (decimalCandidates.length > 0) {
+      // Largest 2-decimal number is most likely the total
+      const best = decimalCandidates.reduce((a, b) => (b.val > a.val ? b : a));
+      amount = best.val;
+      rawAmountToken = best.token;
+    } else {
+      // Last resort: largest number, skipping year-like values (1900–2099)
+      const candidates = [...cleaned.matchAll(/([\d,]+(?:\.\d{1,2})?)/g)]
+        .map(m => ({ val: parseFloat(m[0].replace(/,/g, "")), token: m[0] }))
+        .filter(c => {
+          if (!isFinite(c.val) || c.val <= 0) return false;
+          if (/^\d{4}$/.test(c.token) && c.val >= 1900 && c.val <= 2099) return false;
+          return true;
+        });
+      if (candidates.length === 0) return null;
+      const best = candidates.reduce((a, b) => (b.val > a.val ? b : a));
+      amount = best.val;
+      rawAmountToken = best.token;
+    }
   }
 
   if (!isFinite(amount) || amount <= 0) return null;
