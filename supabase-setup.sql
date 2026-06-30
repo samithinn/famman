@@ -21,11 +21,14 @@ CREATE POLICY "users update own profile"
 
 -- 2. Insert your family members
 --    Replace the UUIDs below with the real ones from:
---    Supabase Dashboard → Authentication → Users → copy the "User UID" column
-INSERT INTO profiles (id, role) VALUES
-  ('YOUR-HUSBAND-UUID-HERE', 'Husband'),
-  ('YOUR-WIFE-UUID-HERE',    'Wife')
-ON CONFLICT (id) DO NOTHING;
+--    Supabase Dashboard -> Authentication -> Users -> copy the "User UID" column
+INSERT INTO profiles (id, role)
+SELECT '83b0afeb-b0f9-4e99-a3aa-fbd63c59e2ab', 'Husband'
+WHERE NOT EXISTS (SELECT 1 FROM profiles WHERE id = '83b0afeb-b0f9-4e99-a3aa-fbd63c59e2ab');
+
+INSERT INTO profiles (id, role)
+SELECT 'YOUR-WIFE-UUID-HERE', 'Wife'
+WHERE NOT EXISTS (SELECT 1 FROM profiles WHERE id = 'YOUR-WIFE-UUID-HERE');
 
 -- 3. Transactions RLS — update & delete own rows only
 --    (Skip if these policies already exist)
