@@ -1,0 +1,124 @@
+
+> family-expense-tracker@0.1.0 dev
+> next dev
+
+  ▲ Next.js 14.2.18
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 1912ms
+ ✓ Compiled /middleware in 215ms (127 modules)
+ ○ Compiling / ...
+
+🌼   [35mdaisyUI[39m [2m4.12.24[22m
+├─ [32m✔︎[39m 1 theme added[2m		https://daisyui.com/docs/themes[22m
+╰─ [32m★[39m [0mStar daisyUI on GitHub[0m	[2mhttps://github.com/saadeghi/daisyui[22m
+
+ ✓ Compiled / in 3.9s (1665 modules)
+ GET / 200 in 4137ms
+ ✓ Compiled in 363ms (839 modules)
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (102kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (250kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ✓ Compiled in 175ms (839 modules)
+ ✓ Compiled in 220ms (952 modules)
+ ✓ Compiled /test-verify in 231ms (1117 modules)
+ GET /test-verify 200 in 354ms
+ ✓ Compiled /api/transactions/[id] in 388ms (381 modules)
+ PUT /api/transactions/some-id 401 in 749ms
+ DELETE /api/transactions/some-id 401 in 9ms
+ PUT /api/transactions/some-id 401 in 4ms
+ ✓ Compiled in 205ms (957 modules)
+   Reload env: .env.local
+ ✓ Compiled in 85ms (1070 modules)
+ ✓ Compiled in 35ms (127 modules)
+ ✓ Compiled in 352ms (839 modules)
+ ✓ Compiled in 130ms (839 modules)
+ ✓ Compiled in 112ms (839 modules)
+ ✓ Compiled in 89ms (839 modules)
+ ✓ Compiled in 111ms (839 modules)
+ ✓ Compiled in 99ms (839 modules)
+ ✓ Compiled in 102ms (839 modules)
+ ✓ Compiled in 79ms (839 modules)
+ ✓ Compiled in 84ms (839 modules)
+ ✓ Compiled in 91ms (839 modules)
+ ✓ Compiled in 92ms (839 modules)
+ ✓ Compiled in 105ms (839 modules)
+ ✓ Compiled in 122ms (839 modules)
+ ✓ Compiled in 83ms (839 modules)
+ ✓ Compiled in 88ms (839 modules)
+ ✓ Compiled in 103ms (839 modules)
+ ✓ Compiled in 97ms (839 modules)
+ ✓ Compiled in 99ms (839 modules)
+ ✓ Compiled in 95ms (839 modules)
+ ✓ Compiled in 100ms (839 modules)
+ ✓ Compiled in 201ms (839 modules)
+ ✓ Compiled in 135ms (839 modules)
+ ✓ Compiled in 69ms (952 modules)
+ ✓ Compiled in 269ms (841 modules)
+ ✓ Compiled in 101ms (841 modules)
+ ✓ Compiled in 103ms (842 modules)
+ ✓ Compiled in 100ms (842 modules)
+ ✓ Compiled /login in 356ms (1121 modules)
+ GET /login 200 in 465ms
+ ✓ Compiled /_not-found in 221ms (1110 modules)
+ GET /_next/static/css/app/layout.css?v=1782812759427 404 in 280ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 277ms
+ GET /_next/static/chunks/main-app.js?v=1782812759427 404 in 278ms
+ GET /login 200 in 61ms
+ GET /_next/static/css/app/layout.css?v=1782812789074 404 in 44ms
+ GET /_next/static/chunks/main-app.js?v=1782812789074 404 in 19ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 18ms
+ GET /icon-192.png 404 in 29ms
+ ✓ Compiled in 166ms (844 modules)
+ ✓ Compiled in 98ms (844 modules)
+ ✓ Compiled in 153ms (830 modules)
+ ✓ Compiled in 144ms (844 modules)
+ ✓ Compiled in 101ms (844 modules)
+ ✓ Compiled in 120ms (844 modules)
+ ✓ Compiled in 101ms (844 modules)
+ ✓ Compiled in 103ms (844 modules)
+ ✓ Compiled in 135ms (844 modules)
+ ✓ Compiled in 103ms (844 modules)
+ ✓ Compiled in 160ms (844 modules)
+ ✓ Compiled in 113ms (844 modules)
+ ✓ Compiled in 95ms (844 modules)
+ ✓ Compiled in 119ms (844 modules)
+ ✓ Compiled in 86ms (844 modules)
+ ✓ Compiled in 97ms (844 modules)
+ ✓ Compiled in 249ms (844 modules)
+ ✓ Compiled in 81ms (844 modules)
+ ✓ Compiled in 114ms (848 modules)
+ ✓ Compiled in 117ms (848 modules)
+ ✓ Compiled in 83ms (848 modules)
+ ✓ Compiled in 87ms (848 modules)
+ ✓ Compiled in 112ms (975 modules)
+ ✓ Compiled in 86ms (848 modules)
+ ✓ Compiled in 177ms (850 modules)
+ ✓ Compiled in 187ms (850 modules)
+ ✓ Compiled in 90ms (850 modules)
+ ✓ Compiled in 155ms (850 modules)
+ ✓ Compiled in 91ms (850 modules)
+ ✓ Compiled in 94ms (850 modules)
+ ✓ Compiled in 103ms (850 modules)
+ ✓ Compiled in 89ms (850 modules)
+ ✓ Compiled in 95ms (850 modules)
+ ✓ Compiled in 101ms (850 modules)
+ ✓ Compiled in 133ms (850 modules)
+ ✓ Compiled in 83ms (850 modules)
+ ✓ Compiled in 94ms (850 modules)
+ ✓ Compiled in 95ms (850 modules)
+ ✓ Compiled in 94ms (850 modules)
+ ✓ Compiled in 94ms (850 modules)
+ ✓ Compiled in 87ms (850 modules)
+ ✓ Compiled in 95ms (850 modules)
+ ✓ Compiled in 88ms (850 modules)
+ ✓ Compiled in 96ms (850 modules)
+ ✓ Compiled in 115ms (850 modules)
+ ✓ Compiled in 124ms (850 modules)
+ ✓ Compiled in 249ms (850 modules)
+ ✓ Compiled in 87ms (850 modules)
+ ✓ Compiled in 87ms (850 modules)
+ ✓ Compiled in 86ms (850 modules)
+ ✓ Compiled in 130ms (850 modules)
+ ✓ Compiled in 85ms (850 modules)
