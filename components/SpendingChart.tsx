@@ -18,7 +18,9 @@ interface SpendingChartProps {
 
 function buildCategoryData(transactions: Transaction[]) {
   const totals: Record<string, number> = {};
-  transactions.forEach((t) => { totals[t.category] = (totals[t.category] ?? 0) + t.amount; });
+  transactions
+    .filter((t) => (t.type ?? "expense") === "expense")
+    .forEach((t) => { totals[t.category] = (totals[t.category] ?? 0) + t.amount; });
   return Object.entries(totals)
     .map(([label, total]) => ({ label, total: Math.round(total * 100) / 100 }))
     .sort((a, b) => b.total - a.total);
@@ -26,10 +28,12 @@ function buildCategoryData(transactions: Transaction[]) {
 
 function buildMonthlyData(transactions: Transaction[]) {
   const monthly: Record<string, number> = {};
-  transactions.forEach((t) => {
-    const m = t.date.slice(0, 7);
-    monthly[m] = (monthly[m] ?? 0) + t.amount;
-  });
+  transactions
+    .filter((t) => (t.type ?? "expense") === "expense")
+    .forEach((t) => {
+      const m = t.date.slice(0, 7);
+      monthly[m] = (monthly[m] ?? 0) + t.amount;
+    });
   return Object.entries(monthly)
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-6)

@@ -4,7 +4,8 @@ export const dynamic = "force-dynamic";
 
 import { useState } from "react";
 import Sidebar, { View } from "@/components/Sidebar";
-import Dashboard from "@/components/Dashboard";
+import DashboardView from "@/components/DashboardView";
+import MonthlyReport from "@/components/MonthlyReport";
 import TransactionsView from "@/components/TransactionsView";
 import AddTransactionModal from "@/components/AddTransactionModal";
 import { Transaction } from "@/lib/supabase";
@@ -27,8 +28,9 @@ export default function Home() {
   const renderView = () => {
     switch (activeView) {
       case "dashboard":
+        return <DashboardView newTransaction={lastAdded} onAddTransaction={() => setShowModal(true)} />;
       case "report":
-        return <Dashboard newTransaction={lastAdded} onAddTransaction={() => setShowModal(true)} />;
+        return <MonthlyReport newTransaction={lastAdded} />;
       case "transactions":
         return <TransactionsView newTransaction={lastAdded} onAddTransaction={() => setShowModal(true)} />;
       case "settings":
@@ -61,7 +63,7 @@ export default function Home() {
           style={{ background: "#fff", borderColor: "#f3e8ff", paddingBottom: 4, paddingTop: 4 }}
         >
           {BOTTOM_NAV.map(({ label, view, icon }) => {
-            const isActive = activeView === view || (view === "report" && activeView === "dashboard");
+            const isActive = activeView === view;
             return (
               <button
                 key={view}
