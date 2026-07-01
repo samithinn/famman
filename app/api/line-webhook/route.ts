@@ -967,6 +967,14 @@ function extractRecipientName(rawText: string): string | null {
     if (/^payment to\s+/i.test(line)) return line;
   }
 
+  // Priority 0b: other bill-payment billers show an ALL-CAPS service/app name
+  // with the actual recipient's name in parens, e.g. "TUNGNGERN (NALINEE)" —
+  // extract just the parenthetical, since that's the person, not the service.
+  for (const line of lines) {
+    const parenMatch = line.match(/^[A-Z][A-Z\s]*\(([^)]+)\)$/);
+    if (parenMatch) return parenMatch[1].trim();
+  }
+
   // Priority 1: explicit "ผู้รับโอน" label — inline or next line
   for (let i = 0; i < lines.length; i++) {
     const inlineMatch = lines[i].match(/ผู้รับโอน[:\s]+(.+)/);
