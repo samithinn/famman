@@ -54,9 +54,8 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
     .filter((t) => (t.type ?? "expense") === "expense")
     .reduce((s, t) => s + t.amount, 0);
 
-  const totalIncome = transactions.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = transactions.filter((t) => (t.type ?? "expense") === "expense").reduce((s, t) => s + t.amount, 0);
-  const currentBalance = totalIncome - totalExpenses;
+  const currentMonthIncome = currentMonthTx.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const currentBalance = currentMonthIncome - currentMonthSpent;
 
   const budgetPct = monthlyBudget > 0 ? Math.min((currentMonthSpent / monthlyBudget) * 100, 100) : 0;
   const overBudget = monthlyBudget > 0 && currentMonthSpent > monthlyBudget;
@@ -115,13 +114,13 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
           style={{ background: "linear-gradient(135deg, #ec4899, #8b5cf6)", boxShadow: "0 4px 16px rgba(236,72,153,0.3)" }}
         >
           <p className="text-xs font-extrabold mb-2" style={{ color: "rgba(255,255,255,0.7)", letterSpacing: "0.8px" }}>
-            CURRENT BALANCE
+            THIS MONTH&apos;S BALANCE
           </p>
           <p className="text-3xl font-black text-white" style={{ letterSpacing: "-1px" }}>
             ฿{currentBalance.toFixed(2)}
           </p>
           <p className="text-xs font-semibold mt-1" style={{ color: "rgba(255,255,255,0.75)" }}>
-            ฿{totalIncome.toFixed(2)} income − ฿{totalExpenses.toFixed(2)} expenses (all time)
+            ฿{currentMonthIncome.toFixed(2)} income − ฿{currentMonthSpent.toFixed(2)} expenses (this month)
           </p>
         </div>
 
