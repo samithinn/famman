@@ -5,6 +5,7 @@ import { Search, Download, RefreshCw, AlertCircle, Loader2 } from "lucide-react"
 import { supabase, Transaction } from "@/lib/supabase";
 import RecentTransactions from "./RecentTransactions";
 import EditTransactionModal from "./EditTransactionModal";
+import PullToRefresh from "./PullToRefresh";
 
 function exportCSV(transactions: Transaction[]) {
   const headers = ["id", "date", "amount", "category", "note", "spender", "created_at"];
@@ -114,7 +115,7 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <PullToRefresh onRefresh={fetchTransactions} className="flex-1 overflow-y-auto p-5 space-y-4">
         {error && (
           <div className="flex items-center gap-2 text-sm rounded-xl px-4 py-3" style={{ background: "#fef2f2", color: "#ef4444" }}>
             <AlertCircle size={16} /> {error}
@@ -151,7 +152,7 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
             />
           )}
         </div>
-      </div>
+      </PullToRefresh>
 
       {/* Edit modal */}
       {editingTx && (

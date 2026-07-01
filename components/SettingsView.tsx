@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User, MessageSquare, Zap, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import PullToRefresh from "./PullToRefresh";
 
 type CatType = "expense" | "income";
 type Category = { id: string; name: string; type: CatType };
@@ -94,6 +95,8 @@ export default function SettingsView() {
     fetchLineStatus();
     fetchCategoryRules();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const refreshAll = () => Promise.all([fetchProfile(), fetchCategories(), fetchLineStatus(), fetchCategoryRules()]);
 
   async function fetchProfile() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -594,7 +597,7 @@ export default function SettingsView() {
         {roleBadge(userRole)}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+      <PullToRefresh onRefresh={refreshAll} className="flex-1 overflow-y-auto p-5 space-y-5">
 
         {/* Admin: User Management */}
         {userRole === "admin" && (
@@ -1233,7 +1236,7 @@ export default function SettingsView() {
             Sign out
           </button>
         </div>
-      </div>
+      </PullToRefresh>
     </div>
   );
 }

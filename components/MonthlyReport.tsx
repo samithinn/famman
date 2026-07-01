@@ -8,6 +8,7 @@ import { RefreshCw, AlertCircle } from "lucide-react";
 import { supabase, Transaction } from "@/lib/supabase";
 import SpendingChart from "./SpendingChart";
 import RecentTransactions from "./RecentTransactions";
+import PullToRefresh from "./PullToRefresh";
 
 const PIE_COLORS = [
   "#a78bfa", "#f9a8d4", "#6ee7b7", "#fcd34d", "#93c5fd",
@@ -150,7 +151,7 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <PullToRefresh onRefresh={fetchTransactions} className="flex-1 overflow-y-auto p-5 space-y-4">
         {error && (
           <div
             className="flex items-center gap-2 text-sm rounded-xl px-4 py-3"
@@ -247,7 +248,7 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
             <RecentTransactions transactions={monthlyTx} limit={monthlyTx.length} />
           )}
         </div>
-      </div>
+      </PullToRefresh>
     </div>
   );
 }
