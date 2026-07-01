@@ -13,7 +13,9 @@ interface RecentTransactionsProps {
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr.includes("T") ? dateStr : dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" });
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}`;
 }
 
 function formatTime(dateStr: string): string | null {
