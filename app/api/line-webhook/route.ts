@@ -286,6 +286,18 @@ const HELP_MESSAGE_FALLBACK = [
   "💸 บันทึกรายจ่าย:",
   "[จำนวน] [รายการ] (เช่น 20 ข้าว)",
   "",
+  "✏️ แก้ไขรายการล่าสุด:",
+  "edit (บอทจะถามว่าต้องการแก้ไขเป็นอะไร)",
+  "",
+  "🗑️ ลบรายการล่าสุด:",
+  "delete หรือ ลบ",
+  "",
+  "📂 ดูหมวดหมู่ทั้งหมด:",
+  "cats (แสดงรายชื่อหมวดหมู่)",
+  "",
+  "📂 เพิ่มหมวดหมู่ใหม่:",
+  "cat (บอทจะถามว่าต้องการเพิ่มหมวดอะไร)",
+  "",
   "🔖 เพิ่มกฎผ่านแชท:",
   "rule chat: [keyword] = [category]",
   "",
@@ -370,8 +382,122 @@ async function handleDeepDiveCommand(
 // Multi-step conversations are tracked via profiles.line_pending_action /
 // line_pending_data since the webhook itself is stateless per-request.
 type AddRuleFlowData = { source?: "chat" | "slip"; keyword?: string };
+type AddCategoryFlowData = { categoryName?: string };
 
 const ADD_RULE_CANCELLED = "ยกเลิกแล้วครับ";
+const ADD_CATEGORY_CANCELLED = "ยกเลิกแล้วครับ";
+
+async function startAddCategoryFlow(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("line_user_id", lineUserId)
+    .single();
+
+  if (!profile) {
+    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ line_pending_action: "add_category_name", line_pending_data: null })
+    .eq("id", profile.id);
+
+  if (error) {
+    console.log("[add-category-flow] failed to save pending state:", error.message);
+    await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    return;
+  }
+
+  await pushToLine(lineUserId, "ต้องการจะเพิ่มหมวดหมู่อะไรดีครับ? (เช่น Parking)\n\nพิมพ์ cc เพื่อยกเลิก");
+}
+
+async function continueAddCategoryFlow(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  profileId: string,
+  pendingAction: string,
+  pendingData: AddCategoryFlowData | null,
+  text: string
+): Promise<void> {
+  if (/^(cancel|cc|ยกเลิก)$/i.test(text)) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, ADD_CATEGORY_CANCELLED);
+    return;
+  }
+
+  const data = pendingData ?? {};
+
+  if (pendingAction === "add_category_name") {
+    const categoryName = text.trim();
+    if (!categoryName) {
+      await pushToLine(lineUserId, "พิมพ์ชื่อหมวดหมู่ด้วยนะครับ");
+      return;
+    }
+
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: "add_category_type", line_pending_data: { categoryName } })
+      .eq("id", profileId);
+
+    await pushToLine(lineUserId, "นี่คือรายรับหรือรายจ่ายดีรับ?\n\nพิมพ์ 1 สำหรับ รายจ่าย (expense)\nพิมพ์ 2 สำหรับ รายรับ (income)\n\nพิมพ์ cc เพื่อยกเลิก");
+    return;
+  }
+
+  if (pendingAction === "add_category_type") {
+    const normalized = text.trim();
+    const type: "expense" | "income" | null =
+      normalized === "1" || /^(expense|รายจ่าย)$/i.test(normalized) ? "expense"
+      : normalized === "2" || /^(income|รายรับ)$/i.test(normalized) ? "income"
+      : null;
+
+    if (!type) {
+      await pushToLine(lineUserId, "พิมพ์ 1 สำหรับ รายจ่าย หรือ 2 สำหรับ รายรับ (หรือพิมพ์ cc เพื่อยกเลิก)");
+      return;
+    }
+
+    const categoryName = data.categoryName ?? "";
+    if (!categoryName) {
+      await supabase
+        .from("profiles")
+        .update({ line_pending_action: null, line_pending_data: null })
+        .eq("id", profileId);
+      await pushToLine(lineUserId, "เกิดข้อผิดพลาด ลองใหม่อีกครั้งนะครับ");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("categories")
+      .insert({ user_id: profileId, name: categoryName, type });
+
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+
+    const typeLabel = type === "expense" ? "รายจ่าย" : "รายรับ";
+    await pushToLine(
+      lineUserId,
+      error
+        ? "เพิ่มหมวดหมู่ไม่สำเร็จ ลองใหม่อีกครั้งนะครับ"
+        : `เพิ่มหมวดหมู่ "${categoryName}" (${typeLabel}) เรียบร้อยแล้วครับ!`
+    );
+    return;
+  }
+
+  // Unrecognized state — clear it
+  await supabase
+    .from("profiles")
+    .update({ line_pending_action: null, line_pending_data: null })
+    .eq("id", profileId);
+}
 
 async function startAddRuleFlow(
   supabase: ReturnType<typeof serviceClient>,
@@ -405,6 +531,129 @@ async function startAddRuleFlow(
   );
 }
 
+// Handles the "edit_transaction" flow where the user responds with new transaction data
+async function continueEditTransactionFlow(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  profileId: string,
+  text: string
+): Promise<void> {
+  if (/^(cancel|cc|ยกเลิก)$/i.test(text)) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
+    return;
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, line_last_transaction_id")
+    .eq("id", profileId)
+    .single();
+
+  if (!profile?.line_last_transaction_id) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, "ไม่พบรายการที่จะแก้ไข ลองใหม่อีกครั้งนะครับ");
+    return;
+  }
+
+  const { data: cats } = await supabase
+    .from("categories")
+    .select("name")
+    .eq("user_id", profileId);
+  const categoryNames = (cats ?? []).map((c: { name: string }) => c.name);
+
+  const editParsed = parseTransaction(text, categoryNames);
+  if (!editParsed) {
+    await pushToLine(lineUserId, randomFormatError());
+    return;
+  }
+
+  // Apply category rules
+  await applyCategoryRules(supabase, profileId, text, editParsed, "chat");
+
+  const txnLabel = editParsed.note ? `฿${editParsed.amount.toLocaleString()} - ${editParsed.category} (${editParsed.note})` : `฿${editParsed.amount.toLocaleString()} - ${editParsed.category}`;
+
+  // Store parsed transaction data and move to confirmation step
+  await supabase
+    .from("profiles")
+    .update({
+      line_pending_action: "confirm_edit",
+      line_pending_data: editParsed,
+    })
+    .eq("id", profileId);
+
+  await pushToLine(lineUserId, `ตรวจสอบหน่อย: ${txnLabel}\n\nพิมพ์ yes เพื่อยืนยัน หรือ no เพื่อลองใหม่`);
+}
+
+// Handles confirmation of edited transaction
+async function confirmEditTransaction(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  profileId: string,
+  text: string,
+  editParsed: { amount: number; category: string; note: string; type: "expense" | "income" }
+): Promise<void> {
+  if (/^yes$/i.test(text)) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, line_last_transaction_id, line_last_response")
+      .eq("id", profileId)
+      .single();
+
+    if (!profile?.line_last_transaction_id) {
+      await supabase
+        .from("profiles")
+        .update({ line_pending_action: null, line_pending_data: null })
+        .eq("id", profileId);
+      await pushToLine(lineUserId, "ไม่พบรายการที่จะแก้ไข ลองใหม่อีกครั้งนะครับ");
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("transactions")
+      .update({
+        amount: editParsed.amount,
+        category: editParsed.category,
+        note: editParsed.note,
+        type: editParsed.type,
+      })
+      .eq("id", profile.line_last_transaction_id);
+
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+
+    if (updateError) {
+      await pushToLine(lineUserId, "แก้ไขรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    } else {
+      const catLabel = editParsed.note ? `${editParsed.category} (${editParsed.note})` : editParsed.category;
+      const personality = await pickPersonalityResponse(supabase, editParsed.category, editParsed.type, profileId, (profile as Record<string, unknown>).line_last_response as string ?? null);
+      await pushToLine(lineUserId, buildSuccessMessage(personality, editParsed.amount, catLabel));
+    }
+  } else if (/^no$/i.test(text)) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: "edit_transaction", line_pending_data: null })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, "ต้องการแก้ไขเป็นอะไรดีรับ? (เช่น 150 food restaurant)\n\nพิมพ์ cc เพื่อยกเลิก");
+  } else if (/^(cancel|cc|ยกเลิก)$/i.test(text)) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
+  } else {
+    await pushToLine(lineUserId, "พิมพ์ yes เพื่อยืนยัน no เพื่อลองใหม่ หรือ cc เพื่อยกเลิก");
+  }
+}
+
 // Advances one step of the pending "เพิ่มกฎ" conversation for a user who
 // already has a `line_pending_action` set. Returns without side effects if
 // `pendingAction` isn't a step this flow recognizes (defensive: clears it).
@@ -416,7 +665,7 @@ async function continueAddRuleFlow(
   pendingData: AddRuleFlowData | null,
   text: string
 ): Promise<void> {
-  if (/^(cancel|ยกเลิก)$/i.test(text)) {
+  if (/^(cancel|cc|ยกเลิก)$/i.test(text)) {
     await supabase
       .from("profiles")
       .update({ line_pending_action: null, line_pending_data: null })
@@ -692,12 +941,22 @@ async function handleShortcutRequest(
     null;
 
   const date = new Date().toISOString();
-  const { error: txError } = await supabase
+  const { data: txData, error: txError } = await supabase
     .from("transactions")
-    .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id, type: parsed.type }]);
+    .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id, type: parsed.type }])
+    .select("id");
 
   if (txError) {
     return NextResponse.json({ error: txError.message }, { status: 500 });
+  }
+
+  // Save the last transaction ID for edit/delete functionality
+  const transactionId = txData?.[0]?.id;
+  if (transactionId) {
+    await supabase
+      .from("profiles")
+      .update({ line_last_transaction_id: transactionId })
+      .eq("id", profile.id);
   }
 
   const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, profile.line_last_response ?? null);
@@ -778,6 +1037,67 @@ export async function POST(req: NextRequest) {
       .eq("line_user_id", lineUserId)
       .single();
 
+    if (flowProfile?.line_pending_action === "edit_transaction") {
+      await continueEditTransactionFlow(supabase, lineUserId, flowProfile.id, text);
+      continue;
+    }
+
+    if (flowProfile?.line_pending_action === "confirm_edit") {
+      const editParsed = flowProfile.line_pending_data as { amount: number; category: string; note: string; type: "expense" | "income" } | null;
+      if (editParsed) {
+        await confirmEditTransaction(supabase, lineUserId, flowProfile.id, text, editParsed);
+        continue;
+      }
+    }
+
+    if (flowProfile?.line_pending_action === "confirm_delete") {
+      if (/^yes$/i.test(text)) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id, line_last_transaction_id")
+          .eq("id", flowProfile.id)
+          .single();
+
+        if (profile?.line_last_transaction_id) {
+          const { error: delError } = await supabase
+            .from("transactions")
+            .delete()
+            .eq("id", profile.line_last_transaction_id);
+
+          if (!delError) {
+            await supabase
+              .from("profiles")
+              .update({ line_last_transaction_id: null, line_pending_action: null })
+              .eq("id", profile.id);
+            await pushToLine(lineUserId, "ลบรายการล่าสุดแล้วครับ!");
+          } else {
+            await pushToLine(lineUserId, "ลบรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+          }
+        }
+      } else if (/^(cancel|cc|ยกเลิก)$/i.test(text)) {
+        await supabase
+          .from("profiles")
+          .update({ line_pending_action: null, line_pending_data: null })
+          .eq("id", flowProfile.id);
+        await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
+      } else {
+        await pushToLine(lineUserId, "พิมพ์ yes เพื่อยืนยัน หรือ cc เพื่อยกเลิก");
+      }
+      continue;
+    }
+
+    if (flowProfile?.line_pending_action?.startsWith("add_category")) {
+      await continueAddCategoryFlow(
+        supabase,
+        lineUserId,
+        flowProfile.id,
+        flowProfile.line_pending_action,
+        flowProfile.line_pending_data as AddCategoryFlowData | null,
+        text
+      );
+      continue;
+    }
+
     if (flowProfile?.line_pending_action) {
       await continueAddRuleFlow(
         supabase,
@@ -826,6 +1146,81 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    // --- Delete last transaction (start confirmation) ---
+    if (/^(delete|del|ลบ)$/i.test(text)) {
+      const { data: delProfile } = await supabase
+        .from("profiles")
+        .select("id, line_last_transaction_id")
+        .eq("line_user_id", lineUserId)
+        .single();
+
+      if (!delProfile?.line_last_transaction_id) {
+        await pushToLine(lineUserId, "ไม่มีรายการล่าสุดให้ลบนะครับ!");
+        continue;
+      }
+
+      // Fetch the transaction to show it
+      const { data: txn } = await supabase
+        .from("transactions")
+        .select("amount, category, note")
+        .eq("id", delProfile.line_last_transaction_id)
+        .single();
+
+      if (!txn) {
+        await pushToLine(lineUserId, "ไม่พบรายการล่าสุด ลองใหม่อีกครั้งนะครับ");
+        continue;
+      }
+
+      const txnLabel = txn.note ? `฿${txn.amount.toLocaleString()} - ${txn.category} (${txn.note})` : `฿${txn.amount.toLocaleString()} - ${txn.category}`;
+      await supabase
+        .from("profiles")
+        .update({ line_pending_action: "confirm_delete", line_pending_data: null })
+        .eq("id", delProfile.id);
+
+      await pushToLine(lineUserId, `แน่ใจนะ? ต้องการลบ ${txnLabel} ใช่มั้ย?\n\nพิมพ์ yes เพื่อยืนยัน หรือ cc เพื่อยกเลิก`);
+      continue;
+    }
+
+    // --- Edit last transaction (start flow) ---
+    if (/^edit$/i.test(text)) {
+      const { data: editProfile } = await supabase
+        .from("profiles")
+        .select("id, line_last_transaction_id")
+        .eq("line_user_id", lineUserId)
+        .single();
+
+      if (!editProfile?.line_last_transaction_id) {
+        await pushToLine(lineUserId, "ไม่มีรายการล่าสุดให้แก้ไขนะครับ!");
+        continue;
+      }
+
+      // Fetch the transaction to show it
+      const { data: txn } = await supabase
+        .from("transactions")
+        .select("amount, category, note")
+        .eq("id", editProfile.line_last_transaction_id)
+        .single();
+
+      if (!txn) {
+        await pushToLine(lineUserId, "ไม่พบรายการล่าสุด ลองใหม่อีกครั้งนะครับ");
+        continue;
+      }
+
+      const txnLabel = txn.note ? `฿${txn.amount.toLocaleString()} - ${txn.category} (${txn.note})` : `฿${txn.amount.toLocaleString()} - ${txn.category}`;
+      const { error } = await supabase
+        .from("profiles")
+        .update({ line_pending_action: "edit_transaction", line_pending_data: null })
+        .eq("id", editProfile.id);
+
+      if (error) {
+        console.log("[edit-flow] failed to save pending state:", error.message);
+        await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+      } else {
+        await pushToLine(lineUserId, `รายการล่าสุด: ${txnLabel}\n\nต้องการแก้ไขเป็นอะไรดีรับ? (เช่น 150 food restaurant)\n\nพิมพ์ cc เพื่อยกเลิก`);
+      }
+      continue;
+    }
+
     // --- Summary commands ---
     if (/^สรุปรายวัน$/i.test(text)) {
       await handleSummaryCommand(supabase, lineUserId, "daily");
@@ -833,6 +1228,51 @@ export async function POST(req: NextRequest) {
     }
     if (/^(summary|สรุป|สรุปรายเดือน)$/i.test(text)) {
       await handleSummaryCommand(supabase, lineUserId, "monthly");
+      continue;
+    }
+
+    // --- View all categories ---
+    if (/^(cats|categories)$/i.test(text)) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("line_user_id", lineUserId)
+        .single();
+
+      if (!profile) {
+        await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+        continue;
+      }
+
+      const { data: categories } = await supabase
+        .from("categories")
+        .select("name, type")
+        .eq("user_id", profile.id)
+        .order("name");
+
+      if (!categories || categories.length === 0) {
+        await pushToLine(lineUserId, "ไม่มีหมวดหมู่ให้ใช้ ลองพิมพ์ 'cat' เพื่อเพิ่มหมวดหมู่ใหม่");
+        continue;
+      }
+
+      const expenses = categories.filter(c => c.type === "expense").map(c => c.name);
+      const incomes = categories.filter(c => c.type === "income").map(c => c.name);
+
+      let message = "📂 หมวดหมู่ที่มี\n━━━━━━━━━━━━━\n";
+      if (expenses.length > 0) {
+        message += "💸 รายจ่าย:\n" + expenses.map(c => `• ${c}`).join("\n") + "\n\n";
+      }
+      if (incomes.length > 0) {
+        message += "💰 รายรับ:\n" + incomes.map(c => `• ${c}`).join("\n");
+      }
+
+      await pushToLine(lineUserId, message);
+      continue;
+    }
+
+    // --- Add category guided flow ---
+    if (/^cat$/i.test(text)) {
+      await startAddCategoryFlow(supabase, lineUserId);
       continue;
     }
 
@@ -920,13 +1360,23 @@ export async function POST(req: NextRequest) {
       null;
 
     const date = new Date().toISOString().split("T")[0];
-    const { error: txError } = await supabase
+    const { data: txData, error: txError } = await supabase
       .from("transactions")
-      .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id, type: parsed.type }]);
+      .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id, type: parsed.type }])
+      .select("id");
 
     if (txError) {
       await pushToLine(lineUserId, "Failed to save. Please try again.");
       continue;
+    }
+
+    // Save the last transaction ID for edit/delete functionality
+    const transactionId = txData?.[0]?.id;
+    if (transactionId) {
+      await supabase
+        .from("profiles")
+        .update({ line_last_transaction_id: transactionId })
+        .eq("id", profile.id);
     }
 
     const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;

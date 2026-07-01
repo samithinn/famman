@@ -183,6 +183,18 @@ INSERT INTO bot_settings (key, value) VALUES ('help_message',
 💸 บันทึกรายจ่าย:
 [จำนวน] [รายการ] (เช่น 20 ข้าว)
 
+✏️ แก้ไขรายการล่าสุด:
+edit (บอทจะถามว่าต้องการแก้ไขเป็นอะไร)
+
+🗑️ ลบรายการล่าสุด:
+delete หรือ ลบ
+
+📂 ดูหมวดหมู่ทั้งหมด:
+cats (แสดงรายชื่อหมวดหมู่)
+
+📂 เพิ่มหมวดหมู่ใหม่:
+cat (บอทจะถามว่าต้องการเพิ่มหมวดอะไร)
+
 🔖 เพิ่มกฎผ่านแชท:
 rule chat: [keyword] = [category]
 
@@ -200,3 +212,6 @@ ON CONFLICT (key) DO NOTHING;
 --     messages) so the webhook knows what the user's next text answers.
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_pending_action text;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_pending_data jsonb;
+
+-- 18. Track the last transaction ID for edit/delete functionality
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_last_transaction_id uuid;
