@@ -744,7 +744,7 @@ async function continueEditNoteStep(
     })
     .eq("id", profileId);
 
-  await pushToLine(lineUserId, `ตรวจสอบหน่อย: ${txnLabel}\n\nพิมพ์ yes เพื่อยืนยัน หรือ no เพื่อลองใหม่`);
+  await pushToLine(lineUserId, `ตรวจสอบหน่อย: ${txnLabel}\n\nพิมพ์ y เพื่อยืนยัน หรือ n เพื่อลองใหม่`);
 }
 
 // Handles confirmation of edited transaction
@@ -755,7 +755,7 @@ async function confirmEditTransaction(
   text: string,
   editParsed: { amount: number; category: string; note: string; type: "expense" | "income" }
 ): Promise<void> {
-  if (/^yes$/i.test(text)) {
+  if (/^(y|yes)$/i.test(text)) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("id, line_last_transaction_id, line_last_response")
@@ -793,7 +793,7 @@ async function confirmEditTransaction(
       const personality = await pickPersonalityResponse(supabase, editParsed.category, editParsed.type, profileId, (profile as Record<string, unknown>).line_last_response as string ?? null);
       await pushToLine(lineUserId, buildSuccessMessage(personality, editParsed.amount, catLabel));
     }
-  } else if (/^no$/i.test(text)) {
+  } else if (/^(n|no)$/i.test(text)) {
     await supabase
       .from("profiles")
       .update({ line_pending_action: "edit_transaction", line_pending_data: null })
@@ -806,7 +806,7 @@ async function confirmEditTransaction(
       .eq("id", profileId);
     await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
   } else {
-    await pushToLine(lineUserId, "พิมพ์ yes เพื่อยืนยัน no เพื่อลองใหม่ หรือ cc เพื่อยกเลิก");
+    await pushToLine(lineUserId, "พิมพ์ y เพื่อยืนยัน n เพื่อลองใหม่ หรือ cc เพื่อยกเลิก");
   }
 }
 
@@ -1036,7 +1036,7 @@ function isValidShortcutKey(provided: string): boolean {
 
 async function handleShortcutRequest(
   req: NextRequest,
-  body: { userId: string; rawText: string }
+  body: { userId: string; rawText: string; note?: string }
 ): Promise<NextResponse> {
   // Accept x-shortcut-key (new) or Authorization: Bearer (legacy)
   const shortcutKey = req.headers.get("x-shortcut-key") ?? "";
@@ -1100,7 +1100,9 @@ async function handleShortcutRequest(
   // (only the amount/date/time tokens are stripped) — keep just the
   // recipient name instead, so edit/delete/show don't echo the whole slip.
   const recipientName = extractRecipientName(text, spender);
-  const note = recipientName ?? parsed.note.slice(0, 60).trim();
+  const userNote = (body.note ?? "").trim();
+  const baseNote = recipientName ?? parsed.note.slice(0, 60).trim();
+  const note = userNote ? (baseNote ? `${baseNote} - ${userNote}` : userNote) : baseNote;
 
   const date = new Date().toISOString();
   const { data: txData, error: txError } = await supabase
@@ -1157,7 +1159,7 @@ export async function POST(req: NextRequest) {
     ) {
       return NextResponse.json({ error: "Body must include userId and rawText" }, { status: 400 });
     }
-    return handleShortcutRequest(req, bodyJson as { userId: string; rawText: string });
+    return handleShortcutRequest(req, bodyJson as { userId: string; rawText: string; note?: string });
   }
 
   // --- Standard LINE webhook path ---
@@ -1220,7 +1222,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (flowProfile?.line_pending_action === "confirm_delete") {
-      if (/^yes$/i.test(text)) {
+      if (/^(y|yes)$/i.test(text)) {
         const { data: profile } = await supabase
           .from("profiles")
           .select("id, line_last_transaction_id")
@@ -1250,7 +1252,7 @@ export async function POST(req: NextRequest) {
           .eq("id", flowProfile.id);
         await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
       } else {
-        await pushToLine(lineUserId, "พิมพ์ yes เพื่อยืนยัน หรือ cc เพื่อยกเลิก");
+        await pushToLine(lineUserId, "พิมพ์ y เพื่อยืนยัน หรือ cc เพื่อยกเลิก");
       }
       continue;
     }
@@ -1351,7 +1353,7 @@ export async function POST(req: NextRequest) {
         .update({ line_pending_action: "confirm_delete", line_pending_data: null })
         .eq("id", delProfile.id);
 
-      await pushToLine(lineUserId, `แน่ใจนะ? ต้องการลบ ${txnLabel} ใช่มั้ย?\n\nพิมพ์ yes เพื่อยืนยัน หรือ cc เพื่อยกเลิก`);
+      await pushToLine(lineUserId, `แน่ใจนะ? ต้องการลบ ${txnLabel} ใช่มั้ย?\n\nพิมพ์ y เพื่อยืนยัน หรือ cc เพื่อยกเลิก`);
       continue;
     }
 
