@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   buildDailySummary,
   buildMonthlySummary,
+  buildRecentTransactionsFlex,
   buildSummaryFlex,
   buildTransactionListFlex,
   fetchTransactionPage,
@@ -1467,15 +1468,7 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const lines = recentTxns.map((t) => {
-        const emoji = t.type === "income" ? "💰" : "💸";
-        const label = t.note ? `${t.category} (${t.note})` : t.category;
-        const d = new Date(t.date);
-        const dateLabel = `${d.getDate()}/${d.getMonth() + 1}`;
-        return `${emoji} ฿${t.amount.toLocaleString()} - ${label} (${dateLabel})`;
-      });
-
-      await pushToLine(lineUserId, `🧾 5 รายการล่าสุด\n━━━━━━━━━━━━━\n${lines.join("\n")}`);
+      await pushToLine(lineUserId, buildRecentTransactionsFlex(recentTxns));
       continue;
     }
 

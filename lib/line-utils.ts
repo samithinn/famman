@@ -13,6 +13,14 @@ function fmt(n: number): string {
   return `฿${Math.round(n).toLocaleString()}`;
 }
 
+// DD/MM/YYYY, the single date format used across every LINE bot message.
+export function formatDMY(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}/${d.getFullYear()}`;
+}
+
 function categoryIcon(category: string): string {
   return CATEGORY_ICONS[category]?.icon ?? CATEGORY_ICONS.Other.icon;
 }
@@ -488,6 +496,95 @@ export function buildTransactionListFlex(
       },
     },
   };
+}
+
+export interface RecentTransactionItem {
+  amount: number;
+  category: string | null;
+  note: string | null;
+  type: string;
+  date: string;
+}
+
+// "show" command: last N transactions (income and expense mixed), newest first.
+export function buildRecentTransactionsFlex(items: RecentTransactionItem[]): LineMessagePayload {
+  const altText = `🧾 ${items.length} รายการล่าสุด`;
+
+  const body: FlexComponent[] = [];
+  items.forEach((item, i) => {
+    if (i > 0) body.push({ type: "separator", margin: "md" });
+    const color = item.type === "income" ? "#16A34A" : "#DC2626";
+    const sign = item.type === "income" ? "+" : "-";
+    const category = item.category || "Other";
+    body.push({
+      type: "box",
+      layout: "horizontal",
+      margin: i === 0 ? "none" : "md",
+      contents: [
+        {
+          type: "box",
+          layout: "vertical",
+          flex: 3,
+          contents: [
+            {
+              type: "text",
+              text: `${categoryIcon(category)} ${category}${item.note ? ` (${item.note})` : ""}`,
+              size: "sm",
+              color: "#555555",
+              wrap: true,
+            },
+            { type: "text", text: formatDMY(item.date), size: "xs", color: "#999999", margin: "xs" },
+          ],
+        },
+        {
+          type: "text",
+          text: `${sign}${fmt(item.amount)}`,
+          size: "sm",
+          weight: "bold",
+          align: "end",
+          gravity: "center",
+          color,
+          flex: 2,
+        },
+      ],
+    });
+  });
+
+  const contents: FlexComponent = {
+    type: "bubble",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: "#3B82F6",
+      paddingAll: "20px",
+      contents: [{ type: "text", text: "🧾 รายการล่าสุด", size: "xl", weight: "bold", color: "#FFFFFF" }],
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "20px",
+      contents: body,
+    },
+  };
+
+  const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (dashboardUrl) {
+    contents.footer = {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "12px",
+      contents: [
+        {
+          type: "button",
+          style: "primary",
+          color: "#3B82F6",
+          action: { type: "uri", label: "เปิดเว็บแดชบอร์ด", uri: `${dashboardUrl.replace(/\/$/, "")}/dashboard` },
+        },
+      ],
+    };
+  }
+
+  return { type: "flex", altText, contents };
 }
 
 export async function pushToLine(lineUserId: string, message: string | LineMessagePayload): Promise<void> {
