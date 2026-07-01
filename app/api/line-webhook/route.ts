@@ -957,71 +957,98 @@ function buildSuccessMessage(personality: string, amount: number, catLabel: stri
   return `${personality} ${summary}`;
 }
 
+// Extracts the "ALLCAPS (Name)" parenthetical (e.g. "TUNGNGERN (NALINEE)" ->
+// "NALINEE"), since that is the actual person, not the wallet/service label.
+// Leaves other candidates untouched.
+function stripParenName(candidate: string): string {
+  const match = candidate.match(/^[A-Z][A-Z\s]*\(([^)]+)\)$/);
+  return match ? match[1].trim() : candidate;
+}
+
 function extractRecipientName(rawText: string): string | null {
   const lines = rawText.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
-
-  // Priority 0: bill-payment slips (e.g. ttb "จ่ายบิลสำเร็จ", as opposed to a
-  // person-to-person "โอนเงินสำเร็จ" transfer) show the payee as an English
-  // "Payment to <biller>" line instead of a person's name — take it verbatim,
-  // it's already an unambiguous label.
-  for (const line of lines) {
-    if (/^payment to\s+/i.test(line)) return line;
-  }
-
-  // Priority 0b: other bill-payment billers show an ALL-CAPS service/app name
-  // with the actual recipient's name in parens, e.g. "TUNGNGERN (NALINEE)" —
-  // extract just the parenthetical, since that's the person, not the service.
-  for (const line of lines) {
-    const parenMatch = line.match(/^[A-Z][A-Z\s]*\(([^)]+)\)$/);
-    if (parenMatch) return parenMatch[1].trim();
-  }
 
   // Priority 1: explicit "ผู้รับโอน" label — inline or next line
   for (let i = 0; i < lines.length; i++) {
     const inlineMatch = lines[i].match(/ผู้รับโอน[:\s]+(.+)/);
-    if (inlineMatch) return inlineMatch[1].trim();
-    if (lines[i] === "ผู้รับโอน" && lines[i + 1]) return lines[i + 1].trim();
+    if (inlineMatch) return stripParenName(inlineMatch[1].trim());
+    if (lines[i] === "ผู้รับโอน" && lines[i + 1]) return stripParenName(lines[i + 1].trim());
   }
 
   // Priority 2: line after "ไปยัง" that has a Thai honorific
   for (let i = 0; i < lines.length; i++) {
     if (/^ไปยัง/.test(lines[i]) && lines[i + 1]) {
       const next = lines[i + 1].trim();
-      if (/^(นาย|นาง(?:สาว)?|น\.ส\.)/.test(next)) return next;
+      if (/^(นาย|นาง(?:สาว)?|น\.ส\.)/.test(next)) return stripParenName(next);
     }
   }
 
-  // Priority 3: Thai name lines — honorific-prefixed ("นาย"/"นาง"/"นางสาว"/
-  // "น.ส.") or bare ("ชื่อ นามสกุล" with no title at all, which some banks
-  // use for the receiver on PromptPay transfers, e.g. ttb → PromptPay slips).
-  // Standard slips list the sender (จาก) above the transfer arrow and the
-  // receiver (ไปยัง) below it, so the receiver is always the *last* name-like
-  // line on the slip. Take the last one instead of trying to exclude the
-  // sender by string match — isSender() rarely matches, since the account's
-  // display name (e.g. "Sami") looks nothing like how the slip renders the
-  // full Thai name (e.g. "นาย ศมิติน กองแก้ว").
+  // Priority 3: anchor on the sender's masked account number line — shape:
+  // dash-separated groups of digits/X-mask, e.g. "XXX-X-XX244-5",
+  // "xxx-x-x0459-x", "XXX-X-x8589-x" (verified against real OCR output from
+  // multiple banks, see Ex_Slip/ + Vercel logs). The recipient's name/label
+  // is the *last* substantive line between that anchor and the start of the
+  // footer (transaction ref / amount / fee section). This beats trying to
+  // recognize "what a name looks like" (Thai, English caps, brackets,
+  // lowercase, alphanumeric biller codes — an unbounded space that kept
+  // breaking on new formats); instead it relies on the one thing that is
+  // actually guaranteed — sender-then-receiver order — plus a small,
+  // enumerable footer/junk vocabulary.
+  const maskedAccountIndex = lines.findIndex(
+    (line) => /[Xx]/.test(line) && /^[Xx0-9]{1,6}(-[Xx0-9]{1,6}){2,4}$/.test(line)
+  );
+  if (maskedAccountIndex !== -1) {
+    const footerLabelPrefix = /^(เลขที่รายการ|จำนวน|ค่าธรรมเนียม|รหัสอ้างอิง|บันทึกช่วยจำ|รายละเอียด|หมายเลขบัตร|สแกนตรวจสอบสลิป|ตรวจสอบสลิป|Amount|Fee|Transaction ID)/i;
+    const strayTokens = new Set(["ttb", "TTB", "tub", "tb", "K+", "SCB", "BBL", "KTB", "BAY", "GSB", "TMB", "UOB", "CIMB", "พร้อมเพย์"]);
+    // Reference/serial codes (all-caps + digits, e.g. "DL020004260600072069"),
+    // account numbers whether masked or not (dash-separated digit/X groups,
+    // e.g. "xxx-xxx-7235", "004-99920510-0687" — case-insensitive, since some
+    // banks mask with lowercase x), plain numeric/currency amounts, and
+    // parenthesized codes are all junk, never the recipient.
+    const isJunkLine = (line: string): boolean =>
+      /^[A-Z0-9]+$/.test(line) ||
+      /^[Xx0-9]{1,10}(-[Xx0-9]{1,10}){1,4}$/.test(line) ||
+      /^[\d\s.,]+$/.test(line) ||
+      /^[\d,]+(\.\d+)?\s*บาท$/.test(line) ||
+      /^\(.*\)$/.test(line);
+
+    const footerStart = lines.findIndex((line, idx) => idx > maskedAccountIndex && footerLabelPrefix.test(line));
+    const searchEnd = footerStart === -1 ? lines.length : footerStart;
+    const candidates = lines
+      .slice(maskedAccountIndex + 1, searchEnd)
+      .filter((line) => !strayTokens.has(line) && !isJunkLine(line) && /[A-Za-z฀-๿]/.test(line));
+    if (candidates.length > 0) return stripParenName(candidates[candidates.length - 1]);
+  }
+
+  // Fallback priorities below are for slips where no masked-account line was
+  // recognized at all; kept from earlier fixes but not re-verified against
+  // real OCR output the way Priority 3 above was.
+
+  // Thai name lines — honorific-prefixed or bare, last one wins.
   const nameLineBlacklist = new Set(["โอนเงินสำเร็จ", "ทำรายการสำเร็จ", "ค่าธรรมเนียม", "พร้อมเพย์", "บันทึกช่วยจำ"]);
   const nameLines = lines.filter(
     (line) => !nameLineBlacklist.has(line) && /^[฀-๿][฀-๿.]*(?:\s+[฀-๿.]+)+$/.test(line)
   );
   if (nameLines.length > 0) return nameLines[nameLines.length - 1];
 
-  // Priority 4: company / partnership — same "second one is the receiver" rule
+  // Company / partnership — same "last one is the receiver" rule.
   const companyLines = lines.filter((line) => /^(บริษัท|ห้างหุ้นส่วน)/.test(line));
   if (companyLines.length > 0) return companyLines[companyLines.length - 1];
 
-  // Priority 5: ALL-CAPS English name lines — some banks (e.g. "Make" by
-  // KBank) render both sender and receiver in English caps instead of Thai.
-  // Same "last line is the receiver" rule as Priority 3, with a blacklist for
-  // English header phrases that also happen to be all-caps.
+  // Bill-payment "Payment to X" label — take verbatim.
+  for (const line of lines) {
+    if (/^payment to\s+/i.test(line)) return line;
+  }
+
+  // ALL-CAPS English name lines, last one wins.
   const englishLineBlacklist = new Set(["TRANSFER", "COMPLETED", "TRANSFER COMPLETED", "AMOUNT", "FEE"]);
   const englishNameLines = lines.filter(
     (line) => !englishLineBlacklist.has(line) && /^[A-Z]+(?:\s+[A-Z]+)+$/.test(line)
   );
   if (englishNameLines.length > 0) return englishNameLines[englishNameLines.length - 1];
 
-  // Priority 6: single ALL-CAPS English merchant name (no counterpart to
-  // disambiguate against, so just take the first one)
+  // Single ALL-CAPS English merchant name (no counterpart to disambiguate
+  // against, so just take the first one).
   for (const line of lines) {
     if (/^[A-Z][A-Z\s]{2,}$/.test(line)) return line;
   }
