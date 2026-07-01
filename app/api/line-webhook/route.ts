@@ -999,7 +999,7 @@ function extractRecipientName(rawText: string): string | null {
   );
   if (maskedAccountIndex !== -1) {
     const footerLabelPrefix = /^(เลขที่รายการ|จำนวน|ค่าธรรมเนียม|รหัสอ้างอิง|บันทึกช่วยจำ|รายละเอียด|หมายเลขบัตร|สแกนตรวจสอบสลิป|ตรวจสอบสลิป|Amount|Fee|Transaction ID)/i;
-    const strayTokens = new Set(["ttb", "TTB", "tub", "tb", "K+", "SCB", "BBL", "KTB", "BAY", "GSB", "TMB", "UOB", "CIMB", "พร้อมเพย์"]);
+    const strayTokens = new Set(["ttb", "TTB", "tub", "tb", "K+", "SCB", "BBL", "KTB", "BAY", "GSB", "TMB", "UOB", "CIMB", "พร้อมเพย์", "LINEPay"]);
     // Reference/serial codes (all-caps + digits, e.g. "DL020004260600072069"),
     // account numbers whether masked or not (dash-separated digit/X groups,
     // e.g. "xxx-xxx-7235", "004-99920510-0687" — case-insensitive, since some
