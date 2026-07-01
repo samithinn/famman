@@ -8,7 +8,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("category_rules")
-    .select("id, keyword, category, created_at")
+    .select("id, keyword, category, source_type, created_at")
     .eq("user_id", user.id)
     .order("keyword");
 
@@ -21,14 +21,21 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { keyword, category } = await req.json();
+  const { keyword, category, source_type } = await req.json();
   if (!keyword?.trim() || !category?.trim())
     return NextResponse.json({ error: "keyword and category are required" }, { status: 400 });
+  if (source_type !== undefined && source_type !== "ocr" && source_type !== "chat")
+    return NextResponse.json({ error: "source_type must be 'ocr' or 'chat'" }, { status: 400 });
 
   const { data, error } = await supabase
     .from("category_rules")
-    .insert({ user_id: user.id, keyword: keyword.trim().toLowerCase(), category: category.trim() })
-    .select("id, keyword, category, created_at")
+    .insert({
+      user_id: user.id,
+      keyword: keyword.trim().toLowerCase(),
+      category: category.trim(),
+      source_type: source_type ?? "ocr",
+    })
+    .select("id, keyword, category, source_type, created_at")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

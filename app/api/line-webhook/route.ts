@@ -136,11 +136,17 @@ function parseTransaction(
 // Looks up the user's category_rules and, if the input text contains a
 // matching keyword, overrides an "Other" category with the rule's category.
 // Mutates `parsed.category` in place so every caller sees the final value.
+//
+// Rules are scoped by source: OCR (iOS Shortcut receipt parsing) and chat
+// (LINE text commands) are separate rule sets. A "chat" source checks chat
+// rules first, then falls back to ocr rules (so existing ocr-only rules
+// still work from chat). An "ocr" source only ever checks ocr rules.
 async function applyCategoryRules(
   supabase: ReturnType<typeof serviceClient>,
   profileId: string,
   rawText: string,
-  parsed: { amount: number; category: string; note: string; type: "expense" | "income" }
+  parsed: { amount: number; category: string; note: string; type: "expense" | "income" },
+  source: "ocr" | "chat"
 ): Promise<void> {
   if (parsed.category !== "Other") {
     console.log(`[category-rules] category already resolved to "${parsed.category}" — skipping rule check`);
@@ -149,7 +155,7 @@ async function applyCategoryRules(
 
   const { data: rules, error } = await supabase
     .from("category_rules")
-    .select("keyword, category")
+    .select("keyword, category, source_type")
     .eq("user_id", profileId);
 
   if (error) {
@@ -158,17 +164,19 @@ async function applyCategoryRules(
   }
 
   const lowerText = rawText.toLowerCase();
-  const hit = (rules ?? []).find(
-    (r: { keyword: string; category: string }) => lowerText.includes(r.keyword.toLowerCase())
-  );
+  const allRules = (rules ?? []) as { keyword: string; category: string; source_type: string }[];
+  const find = (type: string) =>
+    allRules.filter(r => r.source_type === type).find(r => lowerText.includes(r.keyword.toLowerCase()));
+
+  const hit = source === "chat" ? find("chat") ?? find("ocr") : find("ocr");
 
   if (hit) {
     console.log(
-      `[category-rules] matched keyword "${hit.keyword}" in "${rawText}" -> category "${hit.category}" (was "Other")`
+      `[category-rules] source="${source}" matched keyword "${hit.keyword}" in "${rawText}" -> category "${hit.category}" (was "Other")`
     );
     parsed.category = hit.category;
   } else {
-    console.log(`[category-rules] no keyword match in "${rawText}" among ${(rules ?? []).length} rule(s) — keeping "Other"`);
+    console.log(`[category-rules] source="${source}" no keyword match in "${rawText}" among ${allRules.length} rule(s) — keeping "Other"`);
   }
 }
 
@@ -395,8 +403,8 @@ async function handleShortcutRequest(
     return NextResponse.json({ error: "Unrecognized format", receivedText: text }, { status: 400 });
   }
 
-  // Smart categorization: scan rawText against the user's category_rules
-  await applyCategoryRules(supabase, profile.id, text, parsed);
+  // Smart categorization: scan rawText against the user's OCR category_rules
+  await applyCategoryRules(supabase, profile.id, text, parsed, "ocr");
 
   const { data: authUser } = await supabase.auth.admin.getUserById(profile.id);
   const spender =
@@ -550,8 +558,8 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // Smart categorization: scan rawText against the user's category_rules
-    await applyCategoryRules(supabase, profile.id, text, parsed);
+    // Smart categorization: scan rawText against the user's chat category_rules
+    await applyCategoryRules(supabase, profile.id, text, parsed, "chat");
 
     const { data: authUser } = await supabase.auth.admin.getUserById(profile.id);
     const spender =

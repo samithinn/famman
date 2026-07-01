@@ -95,6 +95,10 @@ CREATE TABLE IF NOT EXISTS category_rules (
   created_at timestamptz DEFAULT now()
 );
 
+-- 15. category_rules: split by source so OCR receipt parsing (iOS Shortcut)
+-- and LINE chat text commands maintain separate rule sets
+ALTER TABLE category_rules ADD COLUMN IF NOT EXISTS source_type text NOT NULL DEFAULT 'ocr' CHECK (source_type IN ('ocr', 'chat'));
+
 ALTER TABLE category_rules ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "users manage own category rules" ON category_rules;

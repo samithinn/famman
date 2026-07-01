@@ -46,10 +46,12 @@ export default function SettingsView() {
   const [usersError, setUsersError] = useState("");
 
   // Category rules
-  type CategoryRule = { id: string; keyword: string; category: string };
+  type RuleSourceType = "ocr" | "chat";
+  type CategoryRule = { id: string; keyword: string; category: string; source_type: RuleSourceType };
   const [rules, setRules] = useState<CategoryRule[]>([]);
   const [rulesLoading, setRulesLoading] = useState(true);
   const [rulesError, setRulesError] = useState("");
+  const [ruleTab, setRuleTab] = useState<RuleSourceType>("ocr");
   const [newRuleKeyword, setNewRuleKeyword] = useState("");
   const [newRuleCategory, setNewRuleCategory] = useState("");
   const [addingRule, setAddingRule] = useState(false);
@@ -217,7 +219,7 @@ export default function SettingsView() {
     const res = await fetch("/api/category-rules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keyword, category }),
+      body: JSON.stringify({ keyword, category, source_type: ruleTab }),
     });
     if (!res.ok) {
       const body = await res.json();
@@ -879,9 +881,26 @@ export default function SettingsView() {
             <Zap size={15} style={{ color: "#f59e0b" }} />
             <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Auto-Categorization Rules</h2>
           </div>
-          <p className="text-xs font-semibold mb-4" style={{ color: "#9ca3af" }}>
-            When your Shortcut text contains a keyword, the category is assigned automatically. You can also add rules from the Edit Transaction screen.
+          <p className="text-xs font-semibold mb-3" style={{ color: "#9ca3af" }}>
+            When a receipt (OCR) or LINE chat message contains a keyword, the category is assigned automatically.
           </p>
+
+          <div className="flex gap-1 mb-4 p-1 rounded-xl w-fit" style={{ background: "#f9fafb" }}>
+            {(["ocr", "chat"] as RuleSourceType[]).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setRuleTab(tab)}
+                className="px-4 py-1.5 rounded-lg text-xs font-extrabold transition-all"
+                style={
+                  ruleTab === tab
+                    ? { background: "linear-gradient(135deg, #f59e0b, #d97706)", color: "#fff" }
+                    : { color: "#9ca3af" }
+                }
+              >
+                {tab === "ocr" ? "OCR Rules" : "Chat Rules"}
+              </button>
+            ))}
+          </div>
 
           <div className="flex gap-2 mb-4">
             <input
@@ -925,13 +944,13 @@ export default function SettingsView() {
             <div className="flex items-center justify-center py-6">
               <Loader2 size={20} className="animate-spin" style={{ color: "#a78bfa" }} />
             </div>
-          ) : rules.length === 0 ? (
+          ) : rules.filter(r => r.source_type === ruleTab).length === 0 ? (
             <p className="text-xs font-semibold text-center py-4" style={{ color: "#9ca3af" }}>
-              No rules yet. Add one above to start auto-categorizing.
+              No {ruleTab === "ocr" ? "OCR" : "chat"} rules yet. Add one above to start auto-categorizing.
             </p>
           ) : (
             <div className="space-y-2">
-              {rules.map(rule => (
+              {rules.filter(r => r.source_type === ruleTab).map(rule => (
                 <div
                   key={rule.id}
                   className="flex items-center gap-2 rounded-xl px-3 py-2.5"

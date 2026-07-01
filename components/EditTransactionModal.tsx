@@ -61,7 +61,7 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
     const res = await fetch("/api/category-rules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keyword: ruleKeyword.trim(), category: form.category }),
+      body: JSON.stringify({ keyword: ruleKeyword.trim(), category: form.category, source_type: "ocr" }),
     });
     setRuleLoading(false);
     if (!res.ok) {
