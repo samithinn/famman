@@ -993,7 +993,18 @@ function extractRecipientName(rawText: string): string | null {
   const companyLines = lines.filter((line) => /^(บริษัท|ห้างหุ้นส่วน)/.test(line));
   if (companyLines.length > 0) return companyLines[companyLines.length - 1];
 
-  // Priority 5: ALL-CAPS English merchant name
+  // Priority 5: ALL-CAPS English name lines — some banks (e.g. "Make" by
+  // KBank) render both sender and receiver in English caps instead of Thai.
+  // Same "last line is the receiver" rule as Priority 3, with a blacklist for
+  // English header phrases that also happen to be all-caps.
+  const englishLineBlacklist = new Set(["TRANSFER", "COMPLETED", "TRANSFER COMPLETED", "AMOUNT", "FEE"]);
+  const englishNameLines = lines.filter(
+    (line) => !englishLineBlacklist.has(line) && /^[A-Z]+(?:\s+[A-Z]+)+$/.test(line)
+  );
+  if (englishNameLines.length > 0) return englishNameLines[englishNameLines.length - 1];
+
+  // Priority 6: single ALL-CAPS English merchant name (no counterpart to
+  // disambiguate against, so just take the first one)
   for (const line of lines) {
     if (/^[A-Z][A-Z\s]{2,}$/.test(line)) return line;
   }

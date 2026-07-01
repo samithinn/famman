@@ -37,3 +37,6 @@ next-env.d.ts
 
 # claude code local settings
 .claude/
+
+# real bank slip images used for OCR-parsing test/reference (contain real names/account numbers)
+/Ex_Slip/
