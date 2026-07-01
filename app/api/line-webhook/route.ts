@@ -565,7 +565,7 @@ function extractRecipientName(rawText: string, senderName: string | null): strin
   for (let i = 0; i < lines.length; i++) {
     if (/^ไปยัง/.test(lines[i]) && lines[i + 1]) {
       const next = lines[i + 1].trim();
-      if (/^(นาย|นาง(?:สาว)?)/.test(next)) return next;
+      if (/^(นาย|นาง(?:สาว)?|น\.ส\.)/.test(next)) return next;
     }
   }
 
@@ -577,8 +577,10 @@ function extractRecipientName(rawText: string, senderName: string | null): strin
   // always the *second* honorific name on the slip, not the first. Preferring
   // the last match (instead of the first non-sender match) keeps this correct
   // even when isSender() can't exactly match the sender's OCR'd name.
+  // Includes the abbreviated "น.ส." form (not just "นาง"/"นางสาว"), since
+  // some slips (e.g. PromptPay e-Wallet) render it that way.
   const honorificLines = lines.filter(
-    (line) => /^(นาย|นาง(?:สาว)?)\s*[฀-๿a-zA-Z]/.test(line) && !isSender(line)
+    (line) => /^(นาย|นาง(?:สาว)?|น\.ส\.)\s*[฀-๿a-zA-Z]/.test(line) && !isSender(line)
   );
   if (honorificLines.length > 0) return honorificLines[honorificLines.length - 1];
 
