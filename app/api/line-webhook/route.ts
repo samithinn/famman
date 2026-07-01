@@ -959,6 +959,14 @@ function buildSuccessMessage(personality: string, amount: number, catLabel: stri
 function extractRecipientName(rawText: string): string | null {
   const lines = rawText.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
 
+  // Priority 0: bill-payment slips (e.g. ttb "จ่ายบิลสำเร็จ", as opposed to a
+  // person-to-person "โอนเงินสำเร็จ" transfer) show the payee as an English
+  // "Payment to <biller>" line instead of a person's name — take it verbatim,
+  // it's already an unambiguous label.
+  for (const line of lines) {
+    if (/^payment to\s+/i.test(line)) return line;
+  }
+
   // Priority 1: explicit "ผู้รับโอน" label — inline or next line
   for (let i = 0; i < lines.length; i++) {
     const inlineMatch = lines[i].match(/ผู้รับโอน[:\s]+(.+)/);
