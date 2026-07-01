@@ -2,7 +2,8 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Sidebar, { View } from "@/components/Sidebar";
 import DashboardView from "@/components/DashboardView";
 import MonthlyReport from "@/components/MonthlyReport";
@@ -18,8 +19,20 @@ const BOTTOM_NAV: { label: string; view: View; icon: string }[] = [
   { label: "Settings",view: "settings",     icon: "⚙️" },
 ];
 
-export default function Home() {
-  const [activeView, setActiveView] = useState<View>("dashboard");
+const VALID_VIEWS: View[] = ["dashboard", "transactions", "report", "settings"];
+
+function HomeContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const viewParam = searchParams.get("view");
+  const activeView: View = (VALID_VIEWS as string[]).includes(viewParam ?? "")
+    ? (viewParam as View)
+    : "dashboard";
+
+  const setActiveView = (view: View) => {
+    router.replace(view === "dashboard" ? "/" : `/?view=${view}`, { scroll: false });
+  };
+
   const [showModal, setShowModal] = useState(false);
   const [lastAdded, setLastAdded] = useState<Transaction | null>(null);
 
@@ -89,5 +102,13 @@ export default function Home() {
         onSuccess={handleSuccess}
       />
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={null}>
+      <HomeContent />
+    </Suspense>
   );
 }
