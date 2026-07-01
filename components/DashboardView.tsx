@@ -16,6 +16,7 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [monthlyBudget, setMonthlyBudget] = useState(0);
+  const [currentUser, setCurrentUser] = useState<string>("");
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -38,11 +39,13 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
       if (!user) return;
       supabase
         .from("profiles")
-        .select("monthly_budget")
+        .select("monthly_budget, full_name")
         .eq("id", user.id)
         .single()
         .then(({ data }) => {
           if (data?.monthly_budget) setMonthlyBudget(Number(data.monthly_budget));
+          const name = data?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0];
+          if (name) setCurrentUser(name);
         });
     });
   }, []);
@@ -50,7 +53,7 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
-  const currentMonthTx = transactions.filter((t) => t.date >= start && t.date <= end);
+  const currentMonthTx = transactions.filter((t) => t.date >= start && t.date <= end && t.spender === currentUser);
   const currentMonthSpent = currentMonthTx
     .filter((t) => (t.type ?? "expense") === "expense")
     .reduce((s, t) => s + t.amount, 0);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
@@ -56,11 +56,28 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
     return { value: `${now.getFullYear()}-${String(i + 1).padStart(2, "0")}`, label: d.toLocaleDateString("en-US", { month: "long", year: "numeric" }) };
   });
   const [selectedMonth, setSelectedMonth] = useState(months[now.getMonth()].value);
-  const [selectedSpender, setSelectedSpender] = useState("all");
+  const [currentUser, setCurrentUser] = useState<string>("");
+  const [selectedSpender, setSelectedSpender] = useState("current");
+
+  // Only default the filter to "current" on the very first load — later
+  // refreshes (e.g. pull-to-refresh) should preserve whatever the user picked.
+  const isFirstLoad = useRef(true);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
     setError("");
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
+      const name = profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0];
+      if (name) {
+        setCurrentUser(name);
+        if (isFirstLoad.current) setSelectedSpender("current");
+      }
+    }
+    isFirstLoad.current = false;
+
     const { data, error: err } = await supabase
       .from("transactions")
       .select("*")
@@ -75,7 +92,10 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
   useEffect(() => { if (newTransaction) setTransactions((prev) => [newTransaction, ...prev]); }, [newTransaction]);
 
   const spenders = Array.from(new Set(transactions.map((t) => t.spender).filter(Boolean)));
-  const spenderFiltered = selectedSpender === "all" ? transactions : transactions.filter((t) => t.spender === selectedSpender);
+  const spenderFiltered =
+    selectedSpender === "all" ? transactions :
+    selectedSpender === "current" ? transactions.filter((t) => t.spender === currentUser) :
+    transactions.filter((t) => t.spender === selectedSpender);
   const monthlyTx = spenderFiltered.filter((t) =>
     t.date >= `${selectedMonth}-01` && t.date <= `${selectedMonth}-31`
   );
@@ -122,10 +142,11 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
             className="text-xs font-bold rounded-xl px-3 py-2 cursor-pointer outline-none"
             style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
           >
-            <option value="all">All spenders</option>
-            {spenders.map((s) => (
+            <option value="current">{currentUser || "Current User"}</option>
+            {spenders.filter((s) => s !== currentUser).map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
+            <option value="all">All spenders</option>
           </select>
           {/* Export CSV */}
           <button
