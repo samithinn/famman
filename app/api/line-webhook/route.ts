@@ -1084,6 +1084,11 @@ async function handleShortcutRequest(
   const lineUserId = (body.userId ?? "").trim();
   const text = body.rawText.trim();
 
+  // TEMP DEBUG: capture real OCR line output to fix extractRecipientName
+  // against ground truth instead of hand-transcribed guesses. Remove once
+  // recipient extraction is rebuilt on real data.
+  console.log("[shortcut] raw OCR lines:", JSON.stringify(text.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean)));
+
   console.log("[shortcut] looking up line_user_id:", JSON.stringify(lineUserId));
 
   const { data: profile, error: profileError } = await supabase
