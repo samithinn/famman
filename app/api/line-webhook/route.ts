@@ -292,6 +292,9 @@ const HELP_MESSAGE_FALLBACK = [
   "🗑️ ลบรายการล่าสุด:",
   "delete หรือ ลบ",
   "",
+  "🧾 ดูรายการล่าสุด 5 รายการ:",
+  "show หรือ แสดง",
+  "",
   "📂 ดูหมวดหมู่ทั้งหมด:",
   "cats (แสดงรายชื่อหมวดหมู่)",
   "",
@@ -1286,6 +1289,44 @@ export async function POST(req: NextRequest) {
     }
     if (/^(summary|สรุป|สรุปรายเดือน)$/i.test(text)) {
       await handleSummaryCommand(supabase, lineUserId, "monthly");
+      continue;
+    }
+
+    // --- Show last 5 transactions (chat and OCR both write to the same
+    // transactions table with no source column, so this covers both) ---
+    if (/^(show|แสดง)$/i.test(text)) {
+      const { data: showProfile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("line_user_id", lineUserId)
+        .single();
+
+      if (!showProfile) {
+        await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+        continue;
+      }
+
+      const { data: recentTxns } = await supabase
+        .from("transactions")
+        .select("amount, category, note, type, date")
+        .eq("user_id", showProfile.id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (!recentTxns || recentTxns.length === 0) {
+        await pushToLine(lineUserId, "ยังไม่มีรายการเลยครับ");
+        continue;
+      }
+
+      const lines = recentTxns.map((t) => {
+        const emoji = t.type === "income" ? "💰" : "💸";
+        const label = t.note ? `${t.category} (${t.note})` : t.category;
+        const d = new Date(t.date);
+        const dateLabel = `${d.getDate()}/${d.getMonth() + 1}`;
+        return `${emoji} ฿${t.amount.toLocaleString()} - ${label} (${dateLabel})`;
+      });
+
+      await pushToLine(lineUserId, `🧾 5 รายการล่าสุด\n━━━━━━━━━━━━━\n${lines.join("\n")}`);
       continue;
     }
 
