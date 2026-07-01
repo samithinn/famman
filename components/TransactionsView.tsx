@@ -7,7 +7,7 @@ import RecentTransactions from "./RecentTransactions";
 import EditTransactionModal from "./EditTransactionModal";
 import PullToRefresh from "./PullToRefresh";
 
-function exportCSV(transactions: Transaction[]) {
+function exportCSV(transactions: Transaction[], spender?: string) {
   const headers = ["id", "date", "amount", "category", "note", "spender", "created_at"];
   const rows = transactions.map((t) =>
     headers.map((h) => {
@@ -20,7 +20,8 @@ function exportCSV(transactions: Transaction[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `expenses-all.csv`;
+  const filename = spender ? `expenses-${spender.replace(/\s+/g, "-")}.csv` : "expenses-all.csv";
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -35,6 +36,8 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [currentUser, setCurrentUser] = useState<string>("");
+  const [selectedSpender, setSelectedSpender] = useState<string>("current");
 
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
@@ -44,6 +47,14 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
     setError("");
+
+    // Get current user's name
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.user_metadata?.full_name) {
+      setCurrentUser(user.user_metadata.full_name);
+      setSelectedSpender("current");
+    }
+
     const { data, error: err } = await supabase
       .from("transactions")
       .select("*")
@@ -75,11 +86,23 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
     setDeletingTx(null);
   };
 
-  const filtered = transactions.filter((t) =>
-    !search ||
-    t.note?.toLowerCase().includes(search.toLowerCase()) ||
-    t.category.toLowerCase().includes(search.toLowerCase())
-  );
+  // Get unique spenders from all transactions
+  const uniqueSpenders = Array.from(new Set(transactions.map((t) => t.spender))).sort();
+
+  // Apply both spender and search filters
+  const filtered = transactions.filter((t) => {
+    const spenderMatch =
+      selectedSpender === "all" ||
+      (selectedSpender === "current" && t.spender === currentUser) ||
+      (selectedSpender !== "current" && selectedSpender !== "all" && t.spender === selectedSpender);
+
+    const searchMatch =
+      !search ||
+      t.note?.toLowerCase().includes(search.toLowerCase()) ||
+      t.category.toLowerCase().includes(search.toLowerCase());
+
+    return spenderMatch && searchMatch;
+  });
 
   return (
     <div className="flex flex-col h-full">
@@ -103,7 +126,13 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
             + Add
           </button>
           <button
-            onClick={() => exportCSV(filtered)}
+            onClick={() => {
+              const spenderLabel =
+                selectedSpender === "all" ? "all" :
+                selectedSpender === "current" ? currentUser :
+                selectedSpender;
+              exportCSV(filtered, spenderLabel);
+            }}
             className="text-xs font-extrabold px-4 py-2 rounded-xl text-white flex items-center gap-1.5"
             style={{ background: "linear-gradient(135deg, #ec4899, #8b5cf6)" }}
           >
@@ -122,19 +151,43 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
           </div>
         )}
 
-        {/* Search */}
-        <div className="bg-white rounded-2xl p-4" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-          <div className="relative">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#c4b5fd" }} />
-            <input
-              type="text"
-              placeholder="Search by note or category…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl pl-8 pr-3 py-2 text-sm font-semibold outline-none"
-              style={{ border: "2px solid #f3e8ff", color: "#374151" }}
-            />
+        {/* Search and Filter */}
+        <div className="space-y-3">
+          {/* Search */}
+          <div className="bg-white rounded-2xl p-4" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#c4b5fd" }} />
+              <input
+                type="text"
+                placeholder="Search by note or category…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-xl pl-8 pr-3 py-2 text-sm font-semibold outline-none"
+                style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+              />
+            </div>
           </div>
+
+          {/* Spender Filter */}
+          {uniqueSpenders.length > 0 && (
+            <div className="bg-white rounded-2xl p-4" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+              <label className="text-xs font-semibold mb-2 block" style={{ color: "#6b7280" }}>View by Spender:</label>
+              <select
+                value={selectedSpender}
+                onChange={(e) => setSelectedSpender(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 text-sm font-semibold outline-none"
+                style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+              >
+                <option value="current">{currentUser || "Current User"}</option>
+                {uniqueSpenders.map((spender) => (
+                  <option key={spender} value={spender}>
+                    {spender}
+                  </option>
+                ))}
+                <option value="all">All Users</option>
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Table */}

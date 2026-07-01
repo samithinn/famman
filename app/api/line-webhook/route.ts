@@ -531,7 +531,7 @@ async function startAddRuleFlow(
   );
 }
 
-// Handles the "edit_transaction" flow where the user responds with new transaction data
+// Step 1 of edit flow: parse amount and category, then move to note step
 async function continueEditTransactionFlow(
   supabase: ReturnType<typeof serviceClient>,
   lineUserId: string,
@@ -568,6 +568,7 @@ async function continueEditTransactionFlow(
     .eq("user_id", profileId);
   const categoryNames = (cats ?? []).map((c: { name: string }) => c.name);
 
+  // Parse amount and category (note will be captured in next step)
   const editParsed = parseTransaction(text, categoryNames);
   if (!editParsed) {
     await pushToLine(lineUserId, randomFormatError());
@@ -577,9 +578,58 @@ async function continueEditTransactionFlow(
   // Apply category rules
   await applyCategoryRules(supabase, profileId, text, editParsed, "chat");
 
-  const txnLabel = editParsed.note ? `฿${editParsed.amount.toLocaleString()} - ${editParsed.category} (${editParsed.note})` : `฿${editParsed.amount.toLocaleString()} - ${editParsed.category}`;
+  // Store parsed transaction data and move to note-edit step
+  await supabase
+    .from("profiles")
+    .update({
+      line_pending_action: "edit_note_step",
+      line_pending_data: editParsed,
+    })
+    .eq("id", profileId);
 
-  // Store parsed transaction data and move to confirmation step
+  await pushToLine(lineUserId, `จากข้อมูล: ฿${editParsed.amount.toLocaleString()} - ${editParsed.category}\n\nต้องการแก้ไขหรือเพิ่ม Note ด้วยไหมครับ? (เช่น โน้ต: กินข้าวกับเพื่อน)\n\nพิมพ์ no หรือ none หากไม่ต้อง หรือพิมพ์ cc เพื่อยกเลิก`);
+}
+
+// Step 2 of edit flow: handle note edit/addition, then confirm
+async function continueEditNoteStep(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  profileId: string,
+  text: string,
+  editParsed: { amount: number; category: string; note: string; type: "expense" | "income" } | null
+): Promise<void> {
+  if (/^(cancel|cc|ยกเลิก)$/i.test(text)) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
+    return;
+  }
+
+  if (!editParsed) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, "เกิดข้อผิดพลาด ลองใหม่อีกครั้งนะครับ");
+    return;
+  }
+
+  // If user says "no" or "none", keep the existing note from editParsed
+  // Otherwise, use the provided text as the new note
+  if (!/^(no|none|ไม่|ไม่ต้อง)$/i.test(text)) {
+    // Extract note from text (could be "note: xxx" or just "xxx")
+    const noteMatch = text.match(/^(?:note|โน้ต)\s*:\s*(.+)$/i);
+    const newNote = noteMatch ? noteMatch[1].trim() : text.trim();
+    editParsed.note = newNote;
+  }
+
+  const txnLabel = editParsed.note
+    ? `฿${editParsed.amount.toLocaleString()} - ${editParsed.category} (${editParsed.note})`
+    : `฿${editParsed.amount.toLocaleString()} - ${editParsed.category}`;
+
+  // Move to confirmation step
   await supabase
     .from("profiles")
     .update({
@@ -1042,6 +1092,14 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    if (flowProfile?.line_pending_action === "edit_note_step") {
+      const editParsed = flowProfile.line_pending_data as { amount: number; category: string; note: string; type: "expense" | "income" } | null;
+      if (editParsed) {
+        await continueEditNoteStep(supabase, lineUserId, flowProfile.id, text, editParsed);
+        continue;
+      }
+    }
+
     if (flowProfile?.line_pending_action === "confirm_edit") {
       const editParsed = flowProfile.line_pending_data as { amount: number; category: string; note: string; type: "expense" | "income" } | null;
       if (editParsed) {
@@ -1155,7 +1213,7 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!delProfile?.line_last_transaction_id) {
-        await pushToLine(lineUserId, "ไม่มีรายการล่าสุดให้ลบนะครับ!");
+        await pushToLine(lineUserId, "ไม่พบรายการล่าสุดสำหรับแก้ไขหรือลบครับ");
         continue;
       }
 
@@ -1190,7 +1248,7 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!editProfile?.line_last_transaction_id) {
-        await pushToLine(lineUserId, "ไม่มีรายการล่าสุดให้แก้ไขนะครับ!");
+        await pushToLine(lineUserId, "ไม่พบรายการล่าสุดสำหรับแก้ไขหรือลบครับ");
         continue;
       }
 
@@ -1216,7 +1274,7 @@ export async function POST(req: NextRequest) {
         console.log("[edit-flow] failed to save pending state:", error.message);
         await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
       } else {
-        await pushToLine(lineUserId, `รายการล่าสุด: ${txnLabel}\n\nต้องการแก้ไขเป็นอะไรดีรับ? (เช่น 150 food restaurant)\n\nพิมพ์ cc เพื่อยกเลิก`);
+        await pushToLine(lineUserId, `รายการล่าสุด: ${txnLabel}\n\nต้องการแก้ไขยอดเงิน หรือ หมวดหมู่ไหมครับ? (เช่น 150 food restaurant)\n\nพิมพ์ cc เพื่อยกเลิก`);
       }
       continue;
     }
