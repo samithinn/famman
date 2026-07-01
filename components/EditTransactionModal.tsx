@@ -45,11 +45,15 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
       .then(({ data }) => {
         const names = (data ?? []).map((c: { name: string }) => c.name);
         // Include the existing category even if it was removed from the list
-        if (txType === (transaction.type ?? "expense") && transaction.category && !names.includes(transaction.category)) {
+        const hasExisting = names.some(n => n.toLowerCase() === transaction.category?.toLowerCase());
+        if (txType === (transaction.type ?? "expense") && transaction.category && !hasExisting) {
           names.unshift(transaction.category);
         }
         setCategories(names);
-        setForm(f => (names.includes(f.category) ? f : { ...f, category: names[0] ?? "" }));
+        setForm(f => {
+          const match = names.find(n => n.toLowerCase() === f.category.toLowerCase());
+          return match ? { ...f, category: match } : { ...f, category: names[0] ?? "" };
+        });
         setCatLoading(false);
       });
   }, [txType]); // eslint-disable-line react-hooks/exhaustive-deps

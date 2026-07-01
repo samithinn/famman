@@ -105,14 +105,69 @@ INSERT INTO categories (id, name, user_id, type)
 SELECT gen_random_uuid(), v.name, u.id, v.type
 FROM auth.users u
 CROSS JOIN (VALUES
-  ('Food & Dining', 'expense'), ('Groceries', 'expense'), ('Transportation', 'expense'), ('Utilities', 'expense'),
-  ('Healthcare', 'expense'), ('Entertainment', 'expense'), ('Shopping', 'expense'), ('Education', 'expense'), ('Travel', 'expense'), ('Other', 'expense'),
+  ('food', 'expense'), ('fuel', 'expense'),
+  ('healthcare', 'expense'), ('entertainment', 'expense'), ('shopping', 'expense'), ('education', 'expense'), ('other', 'expense'),
   ('invest', 'expense'), ('goods', 'expense'), ('phone', 'expense'), ('epass', 'expense'),
-  ('Salary', 'income'), ('Teach', 'income'), ('Bonus', 'income')
+  ('salary', 'income'), ('teach', 'income'), ('bonus', 'income')
 ) AS v(name, type)
 WHERE NOT EXISTS (
   SELECT 1 FROM categories c WHERE c.user_id = u.id AND c.name = v.name
 );
+
+-- Merge case-duplicate categories (e.g. "Food" and "food" for the same
+-- user + type) into one canonical row before enforcing uniqueness below.
+-- Canonical pick: the all-lowercase spelling if one exists in the group,
+-- otherwise the lowest id. Re-running this after duplicates are gone is
+-- a no-op (the dupes CTEs come back empty).
+WITH ranked AS (
+  SELECT id, name, user_id, type, lower(name) AS lname,
+    first_value(id) OVER w AS canonical_id,
+    first_value(name) OVER w AS canonical_name
+  FROM categories
+  WINDOW w AS (
+    PARTITION BY user_id, type, lower(name)
+    ORDER BY (name <> lower(name)), id
+  )
+), dupes AS (
+  SELECT * FROM ranked WHERE id <> canonical_id
+)
+UPDATE transactions t
+SET category = d.canonical_name
+FROM dupes d
+WHERE t.user_id = d.user_id AND lower(t.category) = d.lname;
+
+WITH ranked AS (
+  SELECT id, name, user_id, type, lower(name) AS lname,
+    first_value(id) OVER w AS canonical_id,
+    first_value(name) OVER w AS canonical_name
+  FROM categories
+  WINDOW w AS (
+    PARTITION BY user_id, type, lower(name)
+    ORDER BY (name <> lower(name)), id
+  )
+), dupes AS (
+  SELECT * FROM ranked WHERE id <> canonical_id
+)
+UPDATE category_rules cr
+SET category = d.canonical_name
+FROM dupes d
+WHERE cr.user_id = d.user_id AND lower(cr.category) = d.lname;
+
+-- Drop the now-redundant duplicate category rows, keeping only the
+-- canonical (lowercase-preferred, else lowest id) row per group.
+DELETE FROM categories c
+USING categories c2
+WHERE c.user_id = c2.user_id
+  AND c.type = c2.type
+  AND lower(c.name) = lower(c2.name)
+  AND (
+    (c.name = lower(c.name)) < (c2.name = lower(c2.name))
+    OR (c.name = lower(c.name)) = (c2.name = lower(c2.name)) AND c.id > c2.id
+  );
+
+-- Enforce it going forward: one category name per user+type, case-insensitive.
+CREATE UNIQUE INDEX IF NOT EXISTS categories_user_type_lower_name_idx
+  ON categories (user_id, type, lower(name));
 
 -- ------------------------------------------------------------
 -- Category rules (smart auto-categorization for LINE chat text
@@ -147,7 +202,7 @@ CREATE TABLE IF NOT EXISTS line_responses (
   created_at timestamptz DEFAULT now()
 );
 
--- Seed witty income replies for Salary / Teach / Bonus categories (skips rows that already exist)
+-- Seed witty income replies for salary / teach / bonus categories (skips rows that already exist)
 INSERT INTO line_responses (category, response_text, type)
 SELECT v.category, v.response_text, v.type
 FROM (VALUES

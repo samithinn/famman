@@ -270,6 +270,8 @@ export default function SettingsView() {
   async function addCategory(type: CatType) {
     const name = (type === "income" ? newIncomeCatName : newExpenseCatName).trim();
     if (!name) return;
+    const dup = categories.find(c => c.type === type && c.name.toLowerCase() === name.toLowerCase());
+    if (dup) { setCatError(`"${dup.name}" already exists.`); return; }
     setAddingCat(true);
     setCatError("");
     const { data: { user } } = await supabase.auth.getUser();
@@ -290,6 +292,8 @@ export default function SettingsView() {
   async function saveEdit(id: string) {
     const name = editName.trim();
     if (!name) return;
+    const dup = categories.find(c => c.id !== id && c.type === editType && c.name.toLowerCase() === name.toLowerCase());
+    if (dup) { setCatError(`"${dup.name}" already exists.`); return; }
     setCatError("");
     const { error: err } = await supabase.from("categories").update({ name, type: editType }).eq("id", id);
     if (err) { setCatError(err.message); return; }
@@ -803,16 +807,19 @@ export default function SettingsView() {
 
                 const renderTypeGroup = (type: ResponseType, label: string, color: string) => {
                   const typeItems = filtered.filter(r => r.type === type);
+                  const catByLower = new Map(
+                    categories.filter(c => c.type === type).map(c => [c.name.toLowerCase(), c.name])
+                  );
                   const grouped = typeItems.reduce<Record<string, LineResponse[]>>((acc, r) => {
-                    (acc[r.category] ??= []).push(r);
+                    const canonical = r.category.toLowerCase() === "general" ? "general" : catByLower.get(r.category.toLowerCase()) ?? "Other";
+                    (acc[canonical] ??= []).push(r);
                     return acc;
                   }, {});
                   const catNames = Object.keys(grouped).sort();
-                  const totalCatCount = categories.filter(c => c.type === type).length;
 
                   return (
                     <div>
-                      <h3 className="text-xs font-extrabold mb-2" style={{ color }}>{label} ({totalCatCount})</h3>
+                      <h3 className="text-xs font-extrabold mb-2" style={{ color }}>{label} ({catNames.length})</h3>
                       {catNames.length === 0 ? (
                         <p className="text-xs font-semibold text-center py-3" style={{ color: "#9ca3af" }}>
                           No {type} responses.

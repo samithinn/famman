@@ -480,16 +480,30 @@ async function continueAddCategoryFlow(
       return;
     }
 
-    const { error } = await supabase
-      .from("categories")
-      .insert({ user_id: profileId, name: categoryName, type });
-
     await supabase
       .from("profiles")
       .update({ line_pending_action: null, line_pending_data: null })
       .eq("id", profileId);
 
     const typeLabel = type === "expense" ? "รายจ่าย" : "รายรับ";
+
+    const { data: existingCats } = await supabase
+      .from("categories")
+      .select("name")
+      .eq("user_id", profileId)
+      .eq("type", type);
+    const dup = (existingCats ?? []).find(
+      (c: { name: string }) => c.name.toLowerCase() === categoryName.toLowerCase()
+    );
+    if (dup) {
+      await pushToLine(lineUserId, `หมวดหมู่ "${dup.name}" มีอยู่แล้วครับ (${typeLabel})`);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("categories")
+      .insert({ user_id: profileId, name: categoryName, type });
+
     await pushToLine(
       lineUserId,
       error

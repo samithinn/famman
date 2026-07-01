@@ -29,11 +29,13 @@ function parseCSV(text: string, allowedCategories: string[]): { rows: CSVRow[]; 
 
   const rows: CSVRow[] = [];
   const errors: string[] = [];
+  const categoryByLower = new Map(allowedCategories.map(c => [c.toLowerCase(), c]));
 
   dataLines.forEach((line, i) => {
     const rowNum = i + (hasHeader ? 2 : 1);
     const parts = line.split(",").map(s => s.trim().replace(/^"|"$/g, ""));
     const [rawDate = "", rawAmount = "", rawCategory = "", rawNote = ""] = parts;
+    const matchedCategory = categoryByLower.get(rawCategory.toLowerCase());
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
       errors.push(`Row ${rowNum}: Invalid date "${rawDate}" — use YYYY-MM-DD`);
@@ -42,11 +44,11 @@ function parseCSV(text: string, allowedCategories: string[]): { rows: CSVRow[]; 
     if (!rawAmount || isNaN(amt) || amt <= 0) {
       errors.push(`Row ${rowNum}: Invalid amount "${rawAmount}" — must be a positive number`);
     }
-    if (!rawCategory || (allowedCategories.length > 0 && !allowedCategories.includes(rawCategory))) {
+    if (!rawCategory || (allowedCategories.length > 0 && !matchedCategory)) {
       errors.push(`Row ${rowNum}: Unknown category "${rawCategory}"`);
     }
 
-    rows.push({ date: rawDate, amount: rawAmount, category: rawCategory, note: rawNote });
+    rows.push({ date: rawDate, amount: rawAmount, category: matchedCategory ?? rawCategory, note: rawNote });
   });
 
   return { rows, errors };

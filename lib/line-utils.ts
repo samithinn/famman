@@ -61,13 +61,16 @@ function summarizeTxns(txns: Txn[]) {
     .filter(t => t.type === "income")
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const byCategory = new Map<string, number>();
+  const byCategory = new Map<string, { category: string; amount: number }>();
   for (const t of txns) {
     if (t.type !== "expense") continue;
     const cat = t.category || "Other";
-    byCategory.set(cat, (byCategory.get(cat) ?? 0) + t.amount);
+    const key = cat.toLowerCase();
+    const entry = byCategory.get(key) ?? { category: cat, amount: 0 };
+    entry.amount += t.amount;
+    byCategory.set(key, entry);
   }
-  const categoryBreakdown = Array.from(byCategory, ([category, amount]) => ({ category, amount }))
+  const categoryBreakdown = Array.from(byCategory.values())
     .sort((a, b) => b.amount - a.amount);
 
   return { expenses, income, net: income - expenses, categoryBreakdown };

@@ -17,12 +17,17 @@ interface SpendingChartProps {
 }
 
 function buildCategoryData(transactions: Transaction[]) {
-  const totals: Record<string, number> = {};
+  const totals = new Map<string, { label: string; total: number }>();
   transactions
     .filter((t) => (t.type ?? "expense") === "expense")
-    .forEach((t) => { totals[t.category] = (totals[t.category] ?? 0) + t.amount; });
-  return Object.entries(totals)
-    .map(([label, total]) => ({ label, total: Math.round(total * 100) / 100 }))
+    .forEach((t) => {
+      const key = t.category.toLowerCase();
+      const entry = totals.get(key) ?? { label: t.category, total: 0 };
+      entry.total += t.amount;
+      totals.set(key, entry);
+    });
+  return Array.from(totals.values())
+    .map((entry) => ({ label: entry.label, total: Math.round(entry.total * 100) / 100 }))
     .sort((a, b) => b.total - a.total);
 }
 

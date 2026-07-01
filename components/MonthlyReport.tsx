@@ -16,10 +16,15 @@ const PIE_COLORS = [
 ];
 
 function buildPieData(transactions: Transaction[]) {
-  const totals: Record<string, number> = {};
-  transactions.forEach((t) => { totals[t.category] = (totals[t.category] ?? 0) + t.amount; });
-  return Object.entries(totals)
-    .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
+  const totals = new Map<string, { name: string; value: number }>();
+  transactions.forEach((t) => {
+    const key = t.category.toLowerCase();
+    const entry = totals.get(key) ?? { name: t.category, value: 0 };
+    entry.value += t.amount;
+    totals.set(key, entry);
+  });
+  return Array.from(totals.values())
+    .map((entry) => ({ name: entry.name, value: Math.round(entry.value * 100) / 100 }))
     .sort((a, b) => b.value - a.value);
 }
 
