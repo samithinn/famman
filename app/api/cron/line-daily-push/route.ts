@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { buildMonthlySummary, buildSummaryFlex, pushToLine } from "@/lib/line-utils";
+import { buildDailySummary, buildSummaryFlex, pushToLine, SummaryBlock } from "@/lib/line-utils";
 
 function serviceClient() {
   return createClient(
@@ -8,6 +8,21 @@ function serviceClient() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
+}
+
+// "HH:MM" in Asia/Bangkok, matching the format users pick in Settings for
+// profiles.daily_summary_time. Vercel Cron invokes this route once per
+// minute (vercel.json: "* * * * *"), so exact-string match is enough —
+// no need to round/window seconds.
+function currentBangkokHHMM(): string {
+  // hourCycle: "h23" (not hour12: false) — some ICU builds render midnight
+  // as "24:00" with hour12: false, which would never match a "00:00" setting.
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Bangkok",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date());
 }
 
 export async function GET(req: NextRequest) {
@@ -20,10 +35,12 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = serviceClient();
+  const nowHHMM = currentBangkokHHMM();
   const { data: profiles, error } = await supabase
     .from("profiles")
-    .select("id, line_user_id")
-    .not("line_user_id", "is", null);
+    .select("id, line_user_id, summary_preferences")
+    .not("line_user_id", "is", null)
+    .eq("daily_summary_time", nowHHMM);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -33,13 +50,14 @@ export async function GET(req: NextRequest) {
 
   for (const profile of profiles ?? []) {
     try {
-      const summary = await buildMonthlySummary(supabase, profile.id);
-      await pushToLine(profile.line_user_id, buildSummaryFlex(summary));
+      const summary = await buildDailySummary(supabase, profile.id);
+      const preferences = profile.summary_preferences as SummaryBlock[] | null;
+      await pushToLine(profile.line_user_id, buildSummaryFlex(summary, preferences ?? undefined));
       results.push({ id: profile.id, status: "sent" });
     } catch (err) {
       results.push({ id: profile.id, status: `error: ${String(err)}` });
     }
   }
 
-  return NextResponse.json({ ok: true, sent: results.length, results });
+  return NextResponse.json({ ok: true, matchedTime: nowHHMM, sent: results.length, results });
 }

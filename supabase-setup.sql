@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   line_pending_action text,
   line_pending_data jsonb,
   line_last_transaction_id bigint,
+  daily_summary_time text DEFAULT '22:00',
+  summary_preferences jsonb DEFAULT '["income", "expense", "category_breakdown", "budget"]'::jsonb,
   updated_at timestamptz DEFAULT now()
 );
 
@@ -48,6 +50,22 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- could never find a "last transaction"). Fixes existing installs; no-op
 -- on a fresh CREATE TABLE above since there's nothing to convert yet.
 ALTER TABLE profiles ALTER COLUMN line_last_transaction_id TYPE bigint USING NULL;
+
+-- Customizable daily summary push (added for existing installs; the
+-- CREATE TABLE above only applies to a brand-new table).
+-- daily_summary_time is "HH:MM" in Asia/Bangkok local time, or NULL to
+-- opt out of the push entirely. Default '22:00' matches the old fixed-time
+-- push so existing installs keep working after this column is added.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS daily_summary_time text DEFAULT '22:00';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS summary_preferences jsonb
+  DEFAULT '["income", "expense", "category_breakdown", "budget"]'::jsonb;
+
+-- Backfill: existing rows predate the column default above and would
+-- otherwise be NULL (i.e. silently stop receiving the push they already
+-- have). Only touches rows that haven't set a value yet.
+UPDATE profiles SET daily_summary_time = '22:00' WHERE daily_summary_time IS NULL AND line_user_id IS NOT NULL;
+UPDATE profiles SET summary_preferences = '["income", "expense", "category_breakdown", "budget"]'::jsonb
+  WHERE summary_preferences IS NULL AND line_user_id IS NOT NULL;
 
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
@@ -89,6 +107,7 @@ FROM auth.users u
 CROSS JOIN (VALUES
   ('Food & Dining', 'expense'), ('Groceries', 'expense'), ('Transportation', 'expense'), ('Utilities', 'expense'),
   ('Healthcare', 'expense'), ('Entertainment', 'expense'), ('Shopping', 'expense'), ('Education', 'expense'), ('Travel', 'expense'), ('Other', 'expense'),
+  ('invest', 'expense'), ('goods', 'expense'), ('phone', 'expense'), ('epass', 'expense'),
   ('Salary', 'income'), ('Teach', 'income'), ('Bonus', 'income')
 ) AS v(name, type)
 WHERE NOT EXISTS (
@@ -147,6 +166,35 @@ FROM (VALUES
   ('bonus', 'โบนัสออกแล้วครับท่าน! ยินดีด้วยนะที่ความขยันเข้าตาเบื้องบนซักที!', 'income'),
   ('bonus', 'ว้าว! โบนัสเข้า บอทกดบันทึกรัวๆ เลยครับ ยอดนี้ขอให้เก็บไว้ใช้ให้มีความสุขนะ', 'income'),
   ('bonus', 'โบนัสราชการเข้าแล้วจ้า! รวยๆ เฮงๆ แล้วอย่าลืมเลี้ยงกาแฟบอทบ้างนะ 555', 'income')
+) AS v(category, response_text, type)
+WHERE NOT EXISTS (
+  SELECT 1 FROM line_responses lr
+  WHERE lr.category = v.category AND lr.response_text = v.response_text
+);
+
+-- Seed witty expense replies for invest / goods / phone / epass categories
+-- (skips rows that already exist). Amount + category are appended
+-- automatically by buildSuccessMessage() in the webhook — response_text
+-- here is only the personality line, same convention as the income seed above.
+INSERT INTO line_responses (category, response_text, type)
+SELECT v.category, v.response_text, v.type
+FROM (VALUES
+  ('invest', 'นักลงทุนผู้ยิ่งใหญ่... หวังว่ายอดนี้จะไม่พาไปติดดอยนะ! 🥶', 'expense'),
+  ('invest', 'ลงทุนวันนี้ เป็นเศรษฐีวันหน้า... หรือเป็นยาจกก็ไม่รู้สินะ! 📉', 'expense'),
+  ('invest', 'จัดพอร์ตไปแล้วนะครับ ขอให้กราฟเขียวไปตลอดชาตินะ (ขอร้อง) 📈', 'expense'),
+  ('invest', 'เงินเข้าไปอยู่ในตลาดแล้วจ้า เดี๋ยวคืนนี้นอนไม่หลับเช็คกราฟทั้งคืนแน่ๆ 😅', 'expense'),
+  ('goods', 'ของมันต้องมี(อีกแล้วหรอ)! ซื้อสบู่มาอาบหรือมาต้มกินเนี่ยยย 🧼', 'expense'),
+  ('goods', 'หมดไวจริงๆ ซื้อมาตุนหรือเอาไปถมที่ครับเจ้านาย! 📦', 'expense'),
+  ('goods', 'ของใช้จำเป็น(ที่จำเป็นจริงป่ะเนี่ย)หมดอีกแล้ว บ้านนี้ใช้ของกันยังไงเนี่ย 🤔', 'expense'),
+  ('goods', 'ซื้ออีกแล้วเหรอ เดี๋ยวบ้านจะกลายเป็นโกดังของใช้นะครับเนี่ย 📦', 'expense'),
+  ('phone', 'จ่ายค่าเน็ตแล้ว ก็อย่ามัวแต่ไถ TikTok จนลืมหาเงินเข้าบ้านล่ะ! 💸', 'expense'),
+  ('phone', 'ต่อชีวิตให้สมาร์ทโฟนสำเร็จ! ไถฟีดต่อได้เลยวัยรุ่น 📱', 'expense'),
+  ('phone', 'จ่ายค่าเน็ตแล้วนะ อย่าลืมว่าโลกจริงก็มีคนให้คุยด้วยเหมือนกัน 😂', 'expense'),
+  ('phone', 'ค่าโทรศัพท์หมดไปอีกเดือน คุยกับใครจนบิลบานขนาดนี้เนี่ย 📞', 'expense'),
+  ('epass', 'จ่ายค่าทางด่วน เพื่อไปรถติดบนทางด่วนสินะ... ชีวิตคนเมือง! 🚦', 'expense'),
+  ('epass', 'Easy Pass ปลิวไปอีกยอด! ซื้อเวลาหรือซื้อความหัวร้อนครับเนี่ย 🏎️', 'expense'),
+  ('epass', 'เติมเงินทางด่วนแล้วนะ ขอให้ไม่เจอรถติดจนต้องนั่งมองมิเตอร์เวลาไปเรื่อยๆ 🚗', 'expense'),
+  ('epass', 'จ่ายค่า Easy Pass ไปแล้วจ้า วิ่งทางด่วนให้คุ้มๆ อย่าวิ่งไปงีบหลับบนทางด่วนล่ะ 😴', 'expense')
 ) AS v(category, response_text, type)
 WHERE NOT EXISTS (
   SELECT 1 FROM line_responses lr

@@ -121,16 +121,22 @@ export async function buildMonthlySummary(
   return data;
 }
 
+// "YYYY-MM-DD" in Asia/Bangkok, not the server's system timezone — Vercel
+// runs functions with TZ=UTC, so a naive `.toISOString()` calendar date is
+// wrong for ~7 hours a day (Bangkok is UTC+7). Matters once the daily push
+// can fire at any user-chosen time, not just the old fixed 22:00 ICT.
+function bangkokDateStr(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(date);
+}
+
 export async function buildDailySummary(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any, any, any>,
   userId: string
 ): Promise<SummaryData> {
   const now = new Date();
-  const todayStr = now.toISOString().split("T")[0];
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split("T")[0];
+  const todayStr = bangkokDateStr(now);
+  const tomorrowStr = bangkokDateStr(new Date(now.getTime() + 24 * 60 * 60 * 1000));
   const [labelYear, labelMonth, labelDay] = todayStr.split("-").map(Number);
   const dateLabel = `${labelDay} ${THAI_MONTHS[labelMonth - 1]} ${labelYear}`;
 
@@ -279,22 +285,36 @@ function categoryRow(item: CategoryAmount): FlexComponent {
   };
 }
 
-export function buildSummaryFlex(data: SummaryData): LineMessagePayload {
+// Block keys accepted in profiles.summary_preferences — controls which
+// optional sections the push-notification Flex message includes. Omit the
+// param entirely (chat-triggered "สรุป" commands) to always show everything.
+export type SummaryBlock = "income" | "expense" | "category_breakdown" | "budget";
+
+export function buildSummaryFlex(data: SummaryData, preferences?: SummaryBlock[]): LineMessagePayload {
   const title = data.period === "daily" ? "สรุปรายวัน" : "สรุปรายเดือน";
   const emoji = data.period === "daily" ? "📅" : "📊";
   const altText = `${emoji} ${title}: ${data.periodLabel}`;
+  const show = (block: SummaryBlock) => preferences === undefined || preferences.includes(block);
 
-  const body: FlexComponent[] = [
-    amountRow("💰 รายรับ", fmt(data.income), "#16A34A"),
-    { type: "box", layout: "vertical", margin: "xs", contents: [viewDetailsButton(data.period, "income", data.periodKey)] },
-    { type: "separator", margin: "md" },
-    amountRow("💸 รายจ่าย", fmt(data.expenses), "#DC2626"),
-    { type: "box", layout: "vertical", margin: "xs", contents: [viewDetailsButton(data.period, "expense", data.periodKey)] },
-    { type: "separator", margin: "md" },
-    amountRow("คงเหลือ", `${data.net >= 0 ? "+" : ""}${fmt(data.net)}`, data.net >= 0 ? "#16A34A" : "#DC2626"),
-  ];
+  const body: FlexComponent[] = [];
 
-  if (data.categoryBreakdown.length > 0) {
+  if (show("income")) {
+    body.push(
+      amountRow("💰 รายรับ", fmt(data.income), "#16A34A"),
+      { type: "box", layout: "vertical", margin: "xs", contents: [viewDetailsButton(data.period, "income", data.periodKey)] },
+    );
+  }
+  if (show("expense")) {
+    if (show("income")) body.push({ type: "separator", margin: "md" });
+    body.push(
+      amountRow("💸 รายจ่าย", fmt(data.expenses), "#DC2626"),
+      { type: "box", layout: "vertical", margin: "xs", contents: [viewDetailsButton(data.period, "expense", data.periodKey)] },
+    );
+  }
+  if (show("income") || show("expense")) body.push({ type: "separator", margin: "md" });
+  body.push(amountRow("คงเหลือ", `${data.net >= 0 ? "+" : ""}${fmt(data.net)}`, data.net >= 0 ? "#16A34A" : "#DC2626"));
+
+  if (show("category_breakdown") && data.categoryBreakdown.length > 0) {
     body.push({ type: "separator", margin: "lg" });
     body.push({ type: "text", text: "แยกตามหมวดหมู่", size: "xs", color: "#999999", weight: "bold", margin: "lg" });
     const top = data.categoryBreakdown.slice(0, 5);
@@ -306,7 +326,7 @@ export function buildSummaryFlex(data: SummaryData): LineMessagePayload {
     }
   }
 
-  if (data.budget && data.budget > 0) {
+  if (show("budget") && data.budget && data.budget > 0) {
     const pct = data.pct ?? 0;
     const overBudget = pct >= 100;
     const barColor = overBudget ? "#DC2626" : pct >= 80 ? "#F59E0B" : "#16A34A";
