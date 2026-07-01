@@ -792,13 +792,8 @@ export default function SettingsView() {
                 const filtered = respCategoryFilter
                   ? lineResponses.filter(r => r.category === respCategoryFilter)
                   : lineResponses;
-                const grouped = filtered.reduce<Record<string, LineResponse[]>>((acc, r) => {
-                  (acc[r.category] ??= []).push(r);
-                  return acc;
-                }, {});
-                const catNames = Object.keys(grouped).sort();
 
-                if (catNames.length === 0) {
+                if (filtered.length === 0) {
                   return (
                     <p className="text-xs font-semibold text-center py-4" style={{ color: "#9ca3af" }}>
                       No responses in this category.
@@ -806,33 +801,49 @@ export default function SettingsView() {
                   );
                 }
 
-                return (
-                  <div className="space-y-2">
-                    {catNames.map(catName => {
-                      const items = grouped[catName];
-                      const isCollapsed = !expandedRespCats.has(catName);
-                      return (
-                        <div key={catName} className="rounded-xl overflow-hidden" style={{ border: "1px solid #f3e8ff" }}>
-                          <button
-                            onClick={() => toggleRespCategory(catName)}
-                            className="w-full flex items-center justify-between px-3 py-2"
-                            style={{ background: "#faf5ff" }}
-                          >
-                            <span className="flex items-center gap-1.5 text-xs font-extrabold" style={{ color: "#374151" }}>
-                              {catName}
-                              <span className="font-semibold" style={{ color: "#9ca3af" }}>({items.length})</span>
-                            </span>
-                            <ChevronDown
-                              size={14}
-                              style={{
-                                color: "#9ca3af",
-                                transform: isCollapsed ? "rotate(-90deg)" : "none",
-                                transition: "transform 0.15s",
-                              }}
-                            />
-                          </button>
+                const renderTypeGroup = (type: ResponseType, label: string, color: string) => {
+                  const typeItems = filtered.filter(r => r.type === type);
+                  const grouped = typeItems.reduce<Record<string, LineResponse[]>>((acc, r) => {
+                    (acc[r.category] ??= []).push(r);
+                    return acc;
+                  }, {});
+                  const catNames = Object.keys(grouped).sort();
 
-                          {!isCollapsed && (
+                  return (
+                    <div>
+                      <h3 className="text-xs font-extrabold mb-2" style={{ color }}>{label}</h3>
+                      {catNames.length === 0 ? (
+                        <p className="text-xs font-semibold text-center py-3" style={{ color: "#9ca3af" }}>
+                          No {type} responses.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {catNames.map(catName => {
+                            const items = grouped[catName];
+                            const respKey = `${type}:${catName}`;
+                            const isCollapsed = !expandedRespCats.has(respKey);
+                            return (
+                              <div key={respKey} className="rounded-xl overflow-hidden" style={{ border: "1px solid #f3e8ff" }}>
+                                <button
+                                  onClick={() => toggleRespCategory(respKey)}
+                                  className="w-full flex items-center justify-between px-3 py-2"
+                                  style={{ background: "#faf5ff" }}
+                                >
+                                  <span className="flex items-center gap-1.5 text-xs font-extrabold" style={{ color: "#374151" }}>
+                                    {catName}
+                                    <span className="font-semibold" style={{ color: "#9ca3af" }}>({items.length})</span>
+                                  </span>
+                                  <ChevronDown
+                                    size={14}
+                                    style={{
+                                      color: "#9ca3af",
+                                      transform: isCollapsed ? "rotate(-90deg)" : "none",
+                                      transition: "transform 0.15s",
+                                    }}
+                                  />
+                                </button>
+
+                                {!isCollapsed && (
                             <div className="p-2 space-y-2" style={{ background: "#fff" }}>
                               {items.map(r => (
                                 <div
@@ -912,10 +923,20 @@ export default function SettingsView() {
                                 </div>
                               ))}
                             </div>
-                          )}
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
+                      )}
+                    </div>
+                  );
+                };
+
+                return (
+                  <div className="space-y-4">
+                    {renderTypeGroup("expense", "💸 Expense", "#dc2626")}
+                    {renderTypeGroup("income", "💰 Income", "#059669")}
                   </div>
                 );
               })()
