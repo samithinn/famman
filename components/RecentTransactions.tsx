@@ -15,7 +15,8 @@ function formatDate(dateStr: string) {
   const d = new Date(dateStr.includes("T") ? dateStr : dateStr + "T00:00:00");
   const day = String(d.getDate()).padStart(2, "0");
   const month = String(d.getMonth() + 1).padStart(2, "0");
-  return `${day}/${month}`;
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
 }
 
 function formatTime(dateStr: string): string | null {
