@@ -5,13 +5,13 @@ import "./globals.css";
 const nunito = Nunito({ subsets: ["latin"], weight: ["400", "600", "700", "800", "900"] });
 
 export const metadata: Metadata = {
-  title: "Family Expense Tracker",
-  description: "Track your family expenses together",
+  title: "FamMan",
+  description: "Expenses and Incomes Tracker",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Family Expenses",
+    title: "FamMan",
   },
 };
 

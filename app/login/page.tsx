@@ -25,13 +25,8 @@ export default function LoginPage() {
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 flex flex-col items-center gap-6">
         <div className="text-center">
-          <div className="text-5xl mb-3">💰</div>
-          <h1 className="text-2xl font-black" style={{ color: "#1f2937" }}>
-            Family Expenses
-          </h1>
-          <p className="text-sm font-semibold mt-1" style={{ color: "#9ca3af" }}>
-            Track your family finances together
-          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="FamMan" className="w-32 h-32 mx-auto rounded-2xl object-cover" />
         </div>
 
         <label className="flex items-start gap-3 cursor-pointer w-full">

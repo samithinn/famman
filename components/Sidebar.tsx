@@ -26,10 +26,14 @@ export default function Sidebar({ activeView, onViewChange, onAddTransaction }: 
   const SidebarContent = () => (
     <div className="flex flex-col h-full" style={{ background: "#f0ebff" }}>
       {/* Logo */}
-      <div className="px-5 py-5 border-b" style={{ borderColor: "#e9d5ff" }}>
-        <div className="text-lg font-black" style={{ color: "#5b21b6" }}>💕 FamExpense</div>
-        <div className="text-xs font-extrabold mt-0.5" style={{ color: "#a78bfa", letterSpacing: "0.3px" }}>
-          Family Budget Tracker
+      <div className="px-5 py-5 border-b flex items-center gap-2.5" style={{ borderColor: "#e9d5ff" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="FamMan" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+        <div>
+          <div className="text-lg font-black leading-tight" style={{ color: "#5b21b6" }}>FamMan</div>
+          <div className="text-xs font-extrabold mt-0.5" style={{ color: "#a78bfa", letterSpacing: "0.3px" }}>
+            Expenses and Incomes Tracker
+          </div>
         </div>
       </div>
 
@@ -132,7 +136,11 @@ export default function Sidebar({ activeView, onViewChange, onAddTransaction }: 
           <div className="w-3 h-0.5 rounded-full self-start ml-3" style={{ background: "rgba(255,255,255,0.7)" }} />
           <div className="w-4 h-0.5 rounded-full bg-white" />
         </button>
-        <span className="text-sm font-black text-white">💕 FamExpense</span>
+        <span className="flex items-center gap-1.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="FamMan" className="w-6 h-6 rounded-md object-cover" />
+          <span className="text-sm font-black text-white">FamMan</span>
+        </span>
         <button
           onClick={onAddTransaction}
           className="w-9 h-9 rounded-xl flex items-center justify-center text-base"
