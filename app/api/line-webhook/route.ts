@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { ImageAnnotatorClient } from "@google-cloud/vision";
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -14,7 +15,7 @@ import {
 } from "@/lib/line-utils";
 
 type LineSource = { userId?: string; type: string };
-type LineMessage = { type: string; text?: string };
+type LineMessage = { type: string; id?: string; text?: string };
 type LinePostback = { data: string };
 type LineEvent = {
   type: string;
@@ -30,6 +31,23 @@ function serviceClient() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
+}
+
+let visionClient: ImageAnnotatorClient | null = null;
+function getVisionClient(): ImageAnnotatorClient {
+  if (!visionClient) {
+    visionClient = new ImageAnnotatorClient({ keyFilename: "./google-credentials.json" });
+  }
+  return visionClient;
+}
+
+async function downloadLineImage(messageId: string): Promise<Buffer> {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const res = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`LINE content download failed: ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
 }
 
 function verifySignature(body: string, signature: string): boolean {
@@ -1276,6 +1294,94 @@ async function handleShortcutRequest(
   return NextResponse.json({ ok: true });
 }
 
+// Bank-slip photo sent directly in LINE chat. Runs the image through Google
+// Cloud Vision OCR, then hands off to the same parsing pipeline as the iOS
+// Shortcut flow (parseTransaction + extractRecipientName + applyCategoryRules)
+// so both OCR entry points behave identically instead of duplicating regexes.
+async function handleSlipImage(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  messageId: string
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, full_name, line_last_response")
+    .eq("line_user_id", lineUserId)
+    .single();
+
+  if (!profile) {
+    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    return;
+  }
+
+  let text = "";
+  try {
+    const imageBuffer = await downloadLineImage(messageId);
+    const [result] = await getVisionClient().textDetection({ image: { content: imageBuffer } });
+    text = result.fullTextAnnotation?.text ?? "";
+  } catch (err) {
+    console.log("[slip-ocr] Vision API failed:", err instanceof Error ? err.message : err);
+    await pushToLine(lineUserId, "อ่านสลิปไม่สำเร็จ ลองส่งรูปใหม่ หรือพิมพ์ยอดเองก็ได้ครับ");
+    return;
+  }
+
+  console.log("[slip-ocr] raw OCR lines:", JSON.stringify(text.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean)));
+
+  if (!text.trim()) {
+    await pushToLine(lineUserId, "อ่านตัวหนังสือในรูปไม่ออกเลยครับ ลองส่งรูปที่ชัดกว่านี้ดูนะ");
+    return;
+  }
+
+  const { data: cats } = await supabase
+    .from("categories")
+    .select("name")
+    .eq("user_id", profile.id);
+  const categoryNames = (cats ?? []).map((c: { name: string }) => c.name);
+
+  const parsed = parseTransaction(text, categoryNames);
+  if (!parsed) {
+    console.log("[slip-ocr] parseTransaction failed. OCR text:", JSON.stringify(text));
+    await pushToLine(lineUserId, randomFormatError());
+    return;
+  }
+
+  // Smart categorization: scan OCR text against the user's "rule slip" (source_type='ocr') rules
+  await applyCategoryRules(supabase, profile.id, text, parsed, "ocr");
+
+  const { data: authUser } = await supabase.auth.admin.getUserById(profile.id);
+  const spender =
+    profile.full_name ||
+    authUser?.user?.user_metadata?.full_name ||
+    authUser?.user?.email?.split("@")[0] ||
+    null;
+
+  const recipientName = extractRecipientName(text);
+  const note = recipientName || "อ่านจากสลิป";
+
+  const date = new Date().toISOString();
+  const { data: txData, error: txError } = await supabase
+    .from("transactions")
+    .insert([{ date, amount: parsed.amount, category: parsed.category, note, spender, user_id: profile.id, type: parsed.type }])
+    .select("id");
+
+  if (txError) {
+    await pushToLine(lineUserId, "บันทึกรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    return;
+  }
+
+  const transactionId = txData?.[0]?.id;
+  if (transactionId) {
+    await supabase
+      .from("profiles")
+      .update({ line_last_transaction_id: transactionId })
+      .eq("id", profile.id);
+  }
+
+  const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, profile.line_last_response ?? null);
+  const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, "", parsed.category === "Other");
+  await pushToLine(lineUserId, reply);
+}
+
 export async function POST(req: NextRequest) {
   const raw = await req.text();
 
@@ -1331,6 +1437,12 @@ export async function POST(req: NextRequest) {
     // --- Rich Menu button taps ---
     if (event.type === "postback") {
       await handlePostback(supabase, lineUserId, event.postback?.data ?? "");
+      continue;
+    }
+
+    // --- Bank-slip photo sent in chat ---
+    if (event.type === "message" && event.message?.type === "image" && event.message.id) {
+      await handleSlipImage(supabase, lineUserId, event.message.id);
       continue;
     }
 
