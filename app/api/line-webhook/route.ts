@@ -330,16 +330,137 @@ async function handleSummaryCommand(
   await pushToLine(lineUserId, summary);
 }
 
-const ADD_RULE_PROMPT = [
-  "🔖 เพิ่มกฎจัดหมวดหมู่",
-  "━━━━━━━━━━━━━",
-  "พิมพ์คำสั่งตามรูปแบบนี้:",
-  "",
-  "rule chat: [keyword] = [category]",
-  "rule slip: [keyword] = [category]",
-  "",
-  "ตัวอย่าง: rule chat: ข้าว = food",
-].join("\n");
+// --- Guided "add rule" flow (triggered by the "เพิ่มกฎ" Rich Menu button) ---
+// Multi-step conversations are tracked via profiles.line_pending_action /
+// line_pending_data since the webhook itself is stateless per-request.
+type AddRuleFlowData = { source?: "chat" | "slip"; keyword?: string };
+
+const ADD_RULE_CANCELLED = "ยกเลิกแล้วครับ";
+
+async function startAddRuleFlow(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("line_user_id", lineUserId)
+    .single();
+
+  if (!profile) {
+    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ line_pending_action: "add_rule_source", line_pending_data: null })
+    .eq("id", profile.id);
+
+  if (error) {
+    console.log("[add-rule-flow] failed to save pending state:", error.message);
+    await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    return;
+  }
+
+  await pushToLine(
+    lineUserId,
+    "ต้องการเพิ่มกฎ chat หรือ slip ดีครับ?\nพิมพ์ 1 สำหรับ chat (ข้อความในแชท)\nพิมพ์ 2 สำหรับ slip (สลิป/ใบเสร็จ)\n\nพิมพ์ cancel เพื่อยกเลิก"
+  );
+}
+
+// Advances one step of the pending "เพิ่มกฎ" conversation for a user who
+// already has a `line_pending_action` set. Returns without side effects if
+// `pendingAction` isn't a step this flow recognizes (defensive: clears it).
+async function continueAddRuleFlow(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  profileId: string,
+  pendingAction: string,
+  pendingData: AddRuleFlowData | null,
+  text: string
+): Promise<void> {
+  if (/^(cancel|ยกเลิก)$/i.test(text)) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, ADD_RULE_CANCELLED);
+    return;
+  }
+
+  const data = pendingData ?? {};
+
+  if (pendingAction === "add_rule_source") {
+    const normalized = text.trim();
+    const source: "chat" | "slip" | null =
+      normalized === "1" || /^chat$/i.test(normalized) ? "chat"
+      : normalized === "2" || /^slip$/i.test(normalized) ? "slip"
+      : null;
+
+    if (!source) {
+      await pushToLine(lineUserId, "พิมพ์ 1 สำหรับ chat หรือ 2 สำหรับ slip นะครับ (หรือพิมพ์ cancel เพื่อยกเลิก)");
+      return;
+    }
+
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: "add_rule_keyword", line_pending_data: { source } })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, "โอเค! พิมพ์คำ (keyword) ที่ต้องการให้บอทจับคู่ เช่น ข้าว");
+    return;
+  }
+
+  if (pendingAction === "add_rule_keyword") {
+    const keyword = text.trim();
+    if (!keyword) {
+      await pushToLine(lineUserId, "พิมพ์คำ (keyword) ที่ต้องการให้บอทจับคู่ด้วยนะครับ");
+      return;
+    }
+
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: "add_rule_category", line_pending_data: { ...data, keyword } })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, "เกือบเสร็จแล้ว! พิมพ์หมวดหมู่ (category) ที่ต้องการให้จัดเข้า เช่น food");
+    return;
+  }
+
+  if (pendingAction === "add_rule_category") {
+    const category = text.trim();
+    if (!category) {
+      await pushToLine(lineUserId, "พิมพ์หมวดหมู่ (category) ด้วยนะครับ");
+      return;
+    }
+
+    const source = data.source ?? "chat";
+    const keyword = data.keyword ?? "";
+    const sourceType = source === "chat" ? "chat" : "ocr";
+
+    const { error } = await supabase
+      .from("category_rules")
+      .insert({ user_id: profileId, keyword: keyword.toLowerCase(), category, source_type: sourceType });
+
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+
+    await pushToLine(
+      lineUserId,
+      error
+        ? "บันทึกกฎไม่สำเร็จ ลองใหม่อีกครั้งนะครับ"
+        : `บันทึกกฎเรียบร้อย! ถ้าเจอ "${keyword}" ใน ${source} จะจัดเป็น ${category} ให้ครับ`
+    );
+    return;
+  }
+
+  // Unrecognized state — clear it so the user isn't stuck mid-flow forever.
+  await supabase
+    .from("profiles")
+    .update({ line_pending_action: null, line_pending_data: null })
+    .eq("id", profileId);
+}
 
 // Routes Rich Menu button taps (LINE "postback" events). Data is a query
 // string so it's extensible, e.g. "action=daily_summary".
@@ -361,7 +482,7 @@ async function handlePostback(
       await pushToLine(lineUserId, await buildHelpMessage(supabase));
       return;
     case "add_rule":
-      await pushToLine(lineUserId, ADD_RULE_PROMPT);
+      await startAddRuleFlow(supabase, lineUserId);
       return;
     default:
       console.log(`[postback] unrecognized action in data "${data}"`);
@@ -592,6 +713,25 @@ export async function POST(req: NextRequest) {
 
     if (!text) continue;
 
+    // --- Mid-flow answers take priority over every other command ---
+    const { data: flowProfile } = await supabase
+      .from("profiles")
+      .select("id, line_pending_action, line_pending_data")
+      .eq("line_user_id", lineUserId)
+      .single();
+
+    if (flowProfile?.line_pending_action) {
+      await continueAddRuleFlow(
+        supabase,
+        lineUserId,
+        flowProfile.id,
+        flowProfile.line_pending_action,
+        flowProfile.line_pending_data as AddRuleFlowData | null,
+        text
+      );
+      continue;
+    }
+
     // --- Account linking ---
     if (/^link\s+/i.test(text)) {
       const token = text.replace(/^link\s+/i, "").trim();
@@ -638,9 +778,9 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // --- Add-rule prompt (Rich Menu "เพิ่มกฎ" button, or typed directly) ---
+    // --- Add-rule guided flow (Rich Menu "เพิ่มกฎ" button, or typed directly) ---
     if (/^(เพิ่มกฎ|add rule)$/i.test(text)) {
-      await pushToLine(lineUserId, ADD_RULE_PROMPT);
+      await startAddRuleFlow(supabase, lineUserId);
       continue;
     }
 

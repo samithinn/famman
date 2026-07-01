@@ -194,3 +194,9 @@ summary หรือ สรุป
 ━━━━━━━━━━━━━
 ❓ พิมพ์ help หรือ ช่วยด้วย เพื่อดูคำสั่งนี้อีกครั้ง')
 ON CONFLICT (key) DO NOTHING;
+
+-- 17. Track a LINE user's mid-flow guided command (e.g. the "เพิ่มกฎ" Rich
+--     Menu button, which asks chat/slip -> keyword -> category over several
+--     messages) so the webhook knows what the user's next text answers.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_pending_action text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_pending_data jsonb;
