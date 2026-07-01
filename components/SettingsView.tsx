@@ -32,6 +32,8 @@ export default function SettingsView() {
   const [catLoading, setCatLoading] = useState(true);
   const [newExpenseCatName, setNewExpenseCatName] = useState("");
   const [newIncomeCatName, setNewIncomeCatName] = useState("");
+  const [expenseCatOpen, setExpenseCatOpen] = useState(false);
+  const [incomeCatOpen, setIncomeCatOpen] = useState(false);
   const [addingCat, setAddingCat] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -71,7 +73,8 @@ export default function SettingsView() {
   const [editRespType, setEditRespType] = useState<ResponseType>("expense");
   const [deletingRespId, setDeletingRespId] = useState<string | null>(null);
   const [respCategoryFilter, setRespCategoryFilter] = useState("");
-  const [collapsedRespCats, setCollapsedRespCats] = useState<Set<string>>(new Set());
+  // Empty by default = every group starts collapsed; a category name here means the user opened it.
+  const [expandedRespCats, setExpandedRespCats] = useState<Set<string>>(new Set());
 
   // Admin: bot help message
   const [helpMessage, setHelpMessage] = useState("");
@@ -361,7 +364,7 @@ export default function SettingsView() {
   }
 
   function toggleRespCategory(category: string) {
-    setCollapsedRespCats(prev => {
+    setExpandedRespCats(prev => {
       const next = new Set(prev);
       if (next.has(category)) next.delete(category); else next.add(category);
       return next;
@@ -433,17 +436,41 @@ export default function SettingsView() {
     </span>
   );
 
-  const renderCategorySection = (type: CatType, label: string, addValue: string, setAddValue: (v: string) => void) => {
+  const renderCategorySection = (
+    type: CatType,
+    label: string,
+    addValue: string,
+    setAddValue: (v: string) => void,
+    isOpen: boolean,
+    onToggle: () => void
+  ) => {
     const list = categories.filter(c => c.type === type);
     const gradient = type === "income" ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, #ec4899, #8b5cf6)";
 
     return (
-      <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-        <h2 className="text-sm font-black mb-1" style={{ color: "#1f2937" }}>{label}</h2>
-        <p className="text-xs font-semibold mb-4" style={{ color: "#9ca3af" }}>
-          Customize your {type} categories
-        </p>
+      <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+        <button onClick={onToggle} className="w-full flex items-center justify-between p-5 text-left">
+          <div>
+            <h2 className="text-sm font-black mb-1" style={{ color: "#1f2937" }}>
+              {label} <span className="font-semibold" style={{ color: "#9ca3af" }}>({list.length})</span>
+            </h2>
+            <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+              Customize your {type} categories
+            </p>
+          </div>
+          <ChevronDown
+            size={16}
+            className="flex-shrink-0"
+            style={{
+              color: "#9ca3af",
+              transform: isOpen ? "none" : "rotate(-90deg)",
+              transition: "transform 0.15s",
+            }}
+          />
+        </button>
 
+        {isOpen && (
+        <div className="px-5 pb-5">
         {/* Add new */}
         <div className="flex gap-2 mb-4">
           <input
@@ -545,6 +572,8 @@ export default function SettingsView() {
               </div>
             ))}
           </div>
+        )}
+        </div>
         )}
       </div>
     );
@@ -749,7 +778,7 @@ export default function SettingsView() {
                   <div className="space-y-2">
                     {catNames.map(catName => {
                       const items = grouped[catName];
-                      const isCollapsed = collapsedRespCats.has(catName);
+                      const isCollapsed = !expandedRespCats.has(catName);
                       return (
                         <div key={catName} className="rounded-xl overflow-hidden" style={{ border: "1px solid #f3e8ff" }}>
                           <button
@@ -968,8 +997,8 @@ export default function SettingsView() {
             {catError}
           </p>
         )}
-        {renderCategorySection("expense", "Expense Categories 💳", newExpenseCatName, setNewExpenseCatName)}
-        {renderCategorySection("income", "Income Categories 💰", newIncomeCatName, setNewIncomeCatName)}
+        {renderCategorySection("expense", "Expense Categories 💳", newExpenseCatName, setNewExpenseCatName, expenseCatOpen, () => setExpenseCatOpen(o => !o))}
+        {renderCategorySection("income", "Income Categories 💰", newIncomeCatName, setNewIncomeCatName, incomeCatOpen, () => setIncomeCatOpen(o => !o))}
 
         {/* Auto-Categorization Rules */}
         <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
