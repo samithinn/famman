@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User, MessageSquare, Zap } from "lucide-react";
+import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User, MessageSquare, Zap, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 type CatType = "expense" | "income";
@@ -68,6 +68,8 @@ export default function SettingsView() {
   const [editRespText, setEditRespText] = useState("");
   const [editRespType, setEditRespType] = useState<ResponseType>("expense");
   const [deletingRespId, setDeletingRespId] = useState<string | null>(null);
+  const [respCategoryFilter, setRespCategoryFilter] = useState("");
+  const [collapsedRespCats, setCollapsedRespCats] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchProfile();
@@ -348,6 +350,14 @@ export default function SettingsView() {
     setEditingRespId(null);
   }
 
+  function toggleRespCategory(category: string) {
+    setCollapsedRespCats(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category); else next.add(category);
+      return next;
+    });
+  }
+
   async function deleteLineResponse(id: string) {
     setDeletingRespId(id);
     setLineRespError("");
@@ -594,57 +604,71 @@ export default function SettingsView() {
               <MessageSquare size={15} style={{ color: "#06c755" }} />
               <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>LINE Bot Personality</h2>
             </div>
-            <p className="text-xs font-semibold mb-4" style={{ color: "#9ca3af" }}>
-              Sarcastic replies sent after each transaction. Category is a keyword matched against the transaction category (e.g. <code className="font-bold">coffee</code>, <code className="font-bold">food</code>, <code className="font-bold">fuel</code>). Use <code className="font-bold">general</code> as fallback. Type controls whether a reply can appear for income or expense transactions — they never mix.
+            <p className="text-xs font-semibold mb-3" style={{ color: "#9ca3af" }}>
+              Sarcastic replies sent after each transaction. Category is matched against the transaction category (e.g. <code className="font-bold">coffee</code>, <code className="font-bold">food</code>). Use <code className="font-bold">general</code> as fallback.
             </p>
 
-            {/* Add form */}
-            <div className="space-y-2 mb-4">
-              <div className="flex gap-2">
-                <select
-                  value={newRespType}
-                  onChange={e => setNewRespType(e.target.value as ResponseType)}
-                  className="w-24 rounded-xl px-2 py-2 text-xs font-extrabold outline-none flex-shrink-0 appearance-none"
-                  style={{ border: "2px solid #f3e8ff", color: newRespType === "income" ? "#059669" : "#dc2626" }}
-                >
-                  <option value="expense">Expense</option>
-                  <option value="income">Income</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder="Category keyword…"
-                  value={newRespCategory}
-                  onChange={e => setNewRespCategory(e.target.value)}
-                  className="w-28 rounded-xl px-3 py-2 text-xs font-semibold outline-none flex-shrink-0"
-                  style={{ border: "2px solid #f3e8ff", color: "#374151" }}
-                />
-                <input
-                  type="text"
-                  placeholder="Response message…"
-                  value={newRespText}
-                  onChange={e => setNewRespText(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && addLineResponse()}
-                  className="flex-1 rounded-xl px-3 py-2 text-xs font-semibold outline-none"
-                  style={{ border: "2px solid #f3e8ff", color: "#374151" }}
-                />
-                <button
-                  onClick={addLineResponse}
-                  disabled={addingResp || !newRespCategory.trim() || !newRespText.trim()}
-                  className="px-3 py-2 rounded-xl text-xs font-extrabold text-white flex items-center gap-1 flex-shrink-0"
-                  style={{
-                    background: "linear-gradient(135deg, #06c755, #00b248)",
-                    opacity: addingResp || !newRespCategory.trim() || !newRespText.trim() ? 0.5 : 1,
-                  }}
-                >
-                  {addingResp ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={12} /> Add</>}
-                </button>
-              </div>
+            {/* Add form — single compact row */}
+            <div className="flex gap-1.5 mb-3">
+              <select
+                value={newRespType}
+                onChange={e => setNewRespType(e.target.value as ResponseType)}
+                className="w-[4.5rem] rounded-xl px-1.5 py-2 text-xs font-extrabold outline-none flex-shrink-0 appearance-none"
+                style={{ border: "2px solid #f3e8ff", color: newRespType === "income" ? "#059669" : "#dc2626" }}
+              >
+                <option value="expense">Exp.</option>
+                <option value="income">Inc.</option>
+              </select>
+              <input
+                type="text"
+                placeholder="Category…"
+                value={newRespCategory}
+                onChange={e => setNewRespCategory(e.target.value)}
+                className="w-24 rounded-xl px-2 py-2 text-xs font-semibold outline-none flex-shrink-0"
+                style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+              />
+              <input
+                type="text"
+                placeholder="Response message…"
+                value={newRespText}
+                onChange={e => setNewRespText(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addLineResponse()}
+                className="flex-1 rounded-xl px-2 py-2 text-xs font-semibold outline-none min-w-0"
+                style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+              />
+              <button
+                onClick={addLineResponse}
+                disabled={addingResp || !newRespCategory.trim() || !newRespText.trim()}
+                className="px-2.5 py-2 rounded-xl text-xs font-extrabold text-white flex items-center gap-1 flex-shrink-0"
+                style={{
+                  background: "linear-gradient(135deg, #06c755, #00b248)",
+                  opacity: addingResp || !newRespCategory.trim() || !newRespText.trim() ? 0.5 : 1,
+                }}
+              >
+                {addingResp ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+              </button>
             </div>
 
             {lineRespError && (
               <p className="text-xs font-semibold px-3 py-2 rounded-xl mb-3" style={{ background: "#fef2f2", color: "#ef4444" }}>
                 {lineRespError}
               </p>
+            )}
+
+            {!lineRespLoading && lineResponses.length > 0 && (
+              <div className="mb-3">
+                <select
+                  value={respCategoryFilter}
+                  onChange={e => setRespCategoryFilter(e.target.value)}
+                  className="w-full rounded-xl px-3 py-2 text-xs font-semibold outline-none cursor-pointer"
+                  style={{ border: "2px solid #f3e8ff", color: respCategoryFilter ? "#374151" : "#9ca3af", fontFamily: "Nunito" }}
+                >
+                  <option value="">Filter by category… (all)</option>
+                  {Array.from(new Set(lineResponses.map(r => r.category))).sort().map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
             )}
 
             {lineRespLoading ? (
@@ -656,93 +680,137 @@ export default function SettingsView() {
                 No responses yet. Add one above.
               </p>
             ) : (
-              <div className="space-y-2">
-                {lineResponses.map(r => (
-                  <div
-                    key={r.id}
-                    className="rounded-xl px-3 py-2.5"
-                    style={{ background: "#fafafa", border: "1px solid #f3e8ff" }}
-                  >
-                    {editingRespId === r.id ? (
-                      <div className="space-y-1.5">
-                        <div className="flex gap-2">
-                          <select
-                            value={editRespType}
-                            onChange={e => setEditRespType(e.target.value as ResponseType)}
-                            className="w-24 rounded-lg px-2 py-1.5 text-xs font-extrabold outline-none flex-shrink-0 appearance-none"
-                            style={{ border: "2px solid #f3e8ff", color: editRespType === "income" ? "#059669" : "#dc2626" }}
+              (() => {
+                const filtered = respCategoryFilter
+                  ? lineResponses.filter(r => r.category === respCategoryFilter)
+                  : lineResponses;
+                const grouped = filtered.reduce<Record<string, LineResponse[]>>((acc, r) => {
+                  (acc[r.category] ??= []).push(r);
+                  return acc;
+                }, {});
+                const catNames = Object.keys(grouped).sort();
+
+                if (catNames.length === 0) {
+                  return (
+                    <p className="text-xs font-semibold text-center py-4" style={{ color: "#9ca3af" }}>
+                      No responses in this category.
+                    </p>
+                  );
+                }
+
+                return (
+                  <div className="space-y-2">
+                    {catNames.map(catName => {
+                      const items = grouped[catName];
+                      const isCollapsed = collapsedRespCats.has(catName);
+                      return (
+                        <div key={catName} className="rounded-xl overflow-hidden" style={{ border: "1px solid #f3e8ff" }}>
+                          <button
+                            onClick={() => toggleRespCategory(catName)}
+                            className="w-full flex items-center justify-between px-3 py-2"
+                            style={{ background: "#faf5ff" }}
                           >
-                            <option value="expense">Expense</option>
-                            <option value="income">Income</option>
-                          </select>
-                          <input
-                            autoFocus
-                            type="text"
-                            value={editRespCategory}
-                            onChange={e => setEditRespCategory(e.target.value)}
-                            className="w-28 rounded-lg px-2 py-1.5 text-xs font-semibold outline-none flex-shrink-0"
-                            style={{ border: "2px solid #f3e8ff", color: "#374151" }}
-                          />
-                          <input
-                            type="text"
-                            value={editRespText}
-                            onChange={e => setEditRespText(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") saveLineRespEdit(r.id);
-                              if (e.key === "Escape") setEditingRespId(null);
-                            }}
-                            className="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold outline-none"
-                            style={{ border: "2px solid #f3e8ff", color: "#374151" }}
-                          />
-                          <button onClick={() => saveLineRespEdit(r.id)} className="p-1 rounded-lg flex-shrink-0" style={{ color: "#10b981" }}>
-                            <Check size={14} />
+                            <span className="flex items-center gap-1.5 text-xs font-extrabold" style={{ color: "#374151" }}>
+                              {catName}
+                              <span className="font-semibold" style={{ color: "#9ca3af" }}>({items.length})</span>
+                            </span>
+                            <ChevronDown
+                              size={14}
+                              style={{
+                                color: "#9ca3af",
+                                transform: isCollapsed ? "rotate(-90deg)" : "none",
+                                transition: "transform 0.15s",
+                              }}
+                            />
                           </button>
-                          <button onClick={() => setEditingRespId(null)} className="p-1 rounded-lg flex-shrink-0" style={{ color: "#9ca3af" }}>
-                            <X size={14} />
-                          </button>
+
+                          {!isCollapsed && (
+                            <div className="p-2 space-y-2" style={{ background: "#fff" }}>
+                              {items.map(r => (
+                                <div
+                                  key={r.id}
+                                  className="rounded-xl px-3 py-2.5"
+                                  style={{ background: "#fafafa", border: "1px solid #f3e8ff" }}
+                                >
+                                  {editingRespId === r.id ? (
+                                    <div className="flex gap-2">
+                                      <select
+                                        value={editRespType}
+                                        onChange={e => setEditRespType(e.target.value as ResponseType)}
+                                        className="w-20 rounded-lg px-1.5 py-1.5 text-xs font-extrabold outline-none flex-shrink-0 appearance-none"
+                                        style={{ border: "2px solid #f3e8ff", color: editRespType === "income" ? "#059669" : "#dc2626" }}
+                                      >
+                                        <option value="expense">Exp.</option>
+                                        <option value="income">Inc.</option>
+                                      </select>
+                                      <input
+                                        autoFocus
+                                        type="text"
+                                        value={editRespCategory}
+                                        onChange={e => setEditRespCategory(e.target.value)}
+                                        className="w-24 rounded-lg px-2 py-1.5 text-xs font-semibold outline-none flex-shrink-0"
+                                        style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                                      />
+                                      <input
+                                        type="text"
+                                        value={editRespText}
+                                        onChange={e => setEditRespText(e.target.value)}
+                                        onKeyDown={e => {
+                                          if (e.key === "Enter") saveLineRespEdit(r.id);
+                                          if (e.key === "Escape") setEditingRespId(null);
+                                        }}
+                                        className="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold outline-none min-w-0"
+                                        style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                                      />
+                                      <button onClick={() => saveLineRespEdit(r.id)} className="p-1 rounded-lg flex-shrink-0" style={{ color: "#10b981" }}>
+                                        <Check size={14} />
+                                      </button>
+                                      <button onClick={() => setEditingRespId(null)} className="p-1 rounded-lg flex-shrink-0" style={{ color: "#9ca3af" }}>
+                                        <X size={14} />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-start gap-2">
+                                      <span
+                                        className="text-xs font-extrabold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
+                                        style={
+                                          r.type === "income"
+                                            ? { background: "#ecfdf5", color: "#059669", border: "1px solid #a7f3d0" }
+                                            : { background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }
+                                        }
+                                      >
+                                        {r.type}
+                                      </span>
+                                      <span className="flex-1 text-xs font-semibold leading-relaxed" style={{ color: "#374151" }}>
+                                        {r.response_text}
+                                      </span>
+                                      <button
+                                        onClick={() => { setEditingRespId(r.id); setEditRespCategory(r.category); setEditRespText(r.response_text); setEditRespType(r.type); }}
+                                        className="p-1 rounded-lg flex-shrink-0"
+                                        style={{ color: "#7c3aed" }}
+                                      >
+                                        <Pencil size={13} />
+                                      </button>
+                                      <button
+                                        onClick={() => deleteLineResponse(r.id)}
+                                        disabled={deletingRespId === r.id}
+                                        className="p-1 rounded-lg flex-shrink-0"
+                                        style={{ color: "#ef4444" }}
+                                      >
+                                        {deletingRespId === r.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-start gap-2">
-                        <span
-                          className="text-xs font-extrabold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
-                          style={
-                            r.type === "income"
-                              ? { background: "#ecfdf5", color: "#059669", border: "1px solid #a7f3d0" }
-                              : { background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }
-                          }
-                        >
-                          {r.type}
-                        </span>
-                        <span
-                          className="text-xs font-extrabold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
-                          style={{ background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0" }}
-                        >
-                          {r.category}
-                        </span>
-                        <span className="flex-1 text-xs font-semibold leading-relaxed" style={{ color: "#374151" }}>
-                          {r.response_text}
-                        </span>
-                        <button
-                          onClick={() => { setEditingRespId(r.id); setEditRespCategory(r.category); setEditRespText(r.response_text); setEditRespType(r.type); }}
-                          className="p-1 rounded-lg flex-shrink-0"
-                          style={{ color: "#7c3aed" }}
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          onClick={() => deleteLineResponse(r.id)}
-                          disabled={deletingRespId === r.id}
-                          className="p-1 rounded-lg flex-shrink-0"
-                          style={{ color: "#ef4444" }}
-                        >
-                          {deletingRespId === r.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                        </button>
-                      </div>
-                    )}
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
+                );
+              })()
             )}
           </div>
         )}
