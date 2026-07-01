@@ -85,7 +85,7 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
     const res = await fetch(`/api/transactions/${transaction.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date: form.date, amount, category: form.category, note: form.note, type: txType }),
+      body: JSON.stringify({ date: new Date(form.date).toISOString(), amount, category: form.category, note: form.note, type: txType }),
     });
     setLoading(false);
     if (!res.ok) {

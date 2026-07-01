@@ -140,7 +140,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
 
     const { data, error: dbError } = await supabase
       .from("transactions")
-      .insert([{ date: form.date, amount: parseFloat(form.amount), category: form.category, note: form.note, user_id: user.id, spender, type: txType }])
+      .insert([{ date: new Date(form.date).toISOString(), amount: parseFloat(form.amount), category: form.category, note: form.note, user_id: user.id, spender, type: txType }])
       .select()
       .single();
 
@@ -176,7 +176,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
     const { user, spender } = result;
 
     const payload = csvRows.map(row => ({
-      date: row.date,
+      date: new Date(`${row.date}T00:00:00`).toISOString(),
       amount: parseFloat(row.amount),
       category: row.category,
       note: row.note,

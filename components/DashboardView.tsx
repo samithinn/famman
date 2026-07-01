@@ -51,9 +51,18 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
   }, []);
 
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
-  const currentMonthTx = transactions.filter((t) => t.date >= start && t.date <= end && t.spender === currentUser);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const start = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const end = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(lastDay)}`;
+  const localDate = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  const currentMonthTx = transactions.filter((t) => {
+    const td = localDate(t.date);
+    return td >= start && td <= end && t.spender === currentUser;
+  });
   const currentMonthSpent = currentMonthTx
     .filter((t) => (t.type ?? "expense") === "expense")
     .reduce((s, t) => s + t.amount, 0);

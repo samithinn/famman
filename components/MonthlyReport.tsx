@@ -96,9 +96,11 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
     selectedSpender === "all" ? transactions :
     selectedSpender === "current" ? transactions.filter((t) => t.spender === currentUser) :
     transactions.filter((t) => t.spender === selectedSpender);
-  const monthlyTx = spenderFiltered.filter((t) =>
-    t.date >= `${selectedMonth}-01` && t.date <= `${selectedMonth}-31`
-  );
+  const localDate = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const monthlyTx = spenderFiltered.filter((t) => localDate(t.date).startsWith(selectedMonth));
 
   const monthlyExpenses = monthlyTx.filter((t) => (t.type ?? "expense") === "expense");
   const monthlyIncome = monthlyTx.filter((t) => t.type === "income");
