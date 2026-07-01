@@ -96,8 +96,10 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
     setDeletingTx(null);
   };
 
-  // Get unique spenders from all transactions
-  const uniqueSpenders = Array.from(new Set(transactions.map((t) => t.spender))).sort();
+  // Get unique spenders from all transactions, excluding the current user (already shown as "current")
+  const uniqueSpenders = Array.from(new Set(transactions.map((t) => t.spender)))
+    .filter((spender) => spender !== currentUser)
+    .sort();
 
   // Apply both spender and search filters
   const filtered = transactions.filter((t) => {

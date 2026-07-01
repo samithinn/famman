@@ -17,6 +17,7 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
   const [error, setError] = useState("");
   const [monthlyBudget, setMonthlyBudget] = useState(0);
   const [currentUser, setCurrentUser] = useState<string>("");
+  const [selectedSpender, setSelectedSpender] = useState<string>("current");
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -72,6 +73,17 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
 
   const budgetPct = monthlyBudget > 0 ? Math.min((currentMonthSpent / monthlyBudget) * 100, 100) : 0;
   const overBudget = monthlyBudget > 0 && currentMonthSpent > monthlyBudget;
+
+  const uniqueSpenders = Array.from(new Set(transactions.map((t) => t.spender)))
+    .filter((spender) => spender !== currentUser)
+    .sort();
+  const recentTransactions = transactions.filter((t) =>
+    selectedSpender === "all"
+      ? true
+      : selectedSpender === "current"
+      ? t.spender === currentUser
+      : t.spender === selectedSpender
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -174,15 +186,29 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
           className="bg-white rounded-2xl overflow-hidden"
           style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}
         >
-          <div className="flex items-center justify-between px-5 py-4">
-            <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Recent Transactions</h2>
+          <div className="flex items-center justify-between px-5 py-4 gap-3">
+            <h2 className="text-sm font-black flex-shrink-0" style={{ color: "#1f2937" }}>Recent Transactions</h2>
+            <select
+              value={selectedSpender}
+              onChange={(e) => setSelectedSpender(e.target.value)}
+              className="rounded-xl px-3 py-1.5 text-xs font-semibold outline-none"
+              style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+            >
+              <option value="current">{currentUser || "Current User"}</option>
+              {uniqueSpenders.map((spender) => (
+                <option key={spender} value={spender}>
+                  {spender}
+                </option>
+              ))}
+              <option value="all">All Users</option>
+            </select>
           </div>
           {loading ? (
             <div className="flex items-center justify-center h-24 pb-4">
               <span className="loading loading-spinner loading-md" style={{ color: "#a78bfa" }} />
             </div>
           ) : (
-            <RecentTransactions transactions={transactions} limit={10} />
+            <RecentTransactions transactions={recentTransactions} limit={10} />
           )}
         </div>
       </PullToRefresh>
