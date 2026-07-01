@@ -811,7 +811,7 @@ export default function SettingsView() {
 
                   return (
                     <div>
-                      <h3 className="text-xs font-extrabold mb-2" style={{ color }}>{label}</h3>
+                      <h3 className="text-xs font-extrabold mb-2" style={{ color }}>{label} ({catNames.length})</h3>
                       {catNames.length === 0 ? (
                         <p className="text-xs font-semibold text-center py-3" style={{ color: "#9ca3af" }}>
                           No {type} responses.
