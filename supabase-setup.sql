@@ -164,3 +164,33 @@ CROSS JOIN (VALUES ('Salary'), ('Teach'), ('Bonus')) AS v(name)
 WHERE NOT EXISTS (
   SELECT 1 FROM categories c WHERE c.user_id = u.id AND c.name = v.name
 );
+
+-- 16. bot_settings: generic key/value store so admins can edit bot copy
+--     (starting with the "help" command reply) without a code change.
+--     No RLS policies are defined, so only the service-role key (used by
+--     the webhook and the /api/admin/bot-settings route) can read/write it.
+CREATE TABLE IF NOT EXISTS bot_settings (
+  key text PRIMARY KEY,
+  value text NOT NULL,
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE bot_settings ENABLE ROW LEVEL SECURITY;
+
+INSERT INTO bot_settings (key, value) VALUES ('help_message',
+'📖 คำสั่งที่ใช้ได้ทั้งหมด
+━━━━━━━━━━━━━
+💸 บันทึกรายจ่าย:
+[จำนวน] [รายการ] (เช่น 20 ข้าว)
+
+🔖 เพิ่มกฎผ่านแชท:
+rule chat: [keyword] = [category]
+
+🧾 เพิ่มกฎผ่านสลิป:
+rule slip: [keyword] = [category]
+
+📊 ดูสรุปเดือนนี้:
+summary หรือ สรุป
+━━━━━━━━━━━━━
+❓ พิมพ์ help หรือ ช่วยด้วย เพื่อดูคำสั่งนี้อีกครั้ง')
+ON CONFLICT (key) DO NOTHING;

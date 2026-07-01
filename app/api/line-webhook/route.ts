@@ -269,6 +269,37 @@ function randomFormatError(): string {
   return FORMAT_ERROR_MESSAGES[Math.floor(Math.random() * FORMAT_ERROR_MESSAGES.length)];
 }
 
+const HELP_MESSAGE_FALLBACK = [
+  "📖 คำสั่งที่ใช้ได้ทั้งหมด",
+  "━━━━━━━━━━━━━",
+  "💸 บันทึกรายจ่าย:",
+  "[จำนวน] [รายการ] (เช่น 20 ข้าว)",
+  "",
+  "🔖 เพิ่มกฎผ่านแชท:",
+  "rule chat: [keyword] = [category]",
+  "",
+  "🧾 เพิ่มกฎผ่านสลิป:",
+  "rule slip: [keyword] = [category]",
+  "",
+  "📊 ดูสรุปเดือนนี้:",
+  "summary หรือ สรุป",
+  "━━━━━━━━━━━━━",
+  "❓ พิมพ์ help หรือ ช่วยด้วย เพื่อดูคำสั่งนี้อีกครั้ง",
+].join("\n");
+
+// Admin-editable via Settings → Bot Help Message (bot_settings table),
+// so the reply text can change without a code deploy.
+async function buildHelpMessage(supabase: ReturnType<typeof serviceClient>): Promise<string> {
+  const { data, error } = await supabase
+    .from("bot_settings")
+    .select("value")
+    .eq("key", "help_message")
+    .single();
+
+  if (error || !data?.value) return HELP_MESSAGE_FALLBACK;
+  return data.value;
+}
+
 function buildSuccessMessage(personality: string, amount: number, catLabel: string): string {
   const summaries = [
     `(จัดไป: ฿${amount.toLocaleString()} - ${catLabel})`,
@@ -515,6 +546,12 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    // --- Help command ---
+    if (/^(help|ช่วยด้วย)$/i.test(text)) {
+      await pushToLine(lineUserId, await buildHelpMessage(supabase));
+      continue;
+    }
+
     // --- Summary command ---
     if (/^(summary|สรุป)$/i.test(text)) {
       const { data: summaryProfile } = await supabase
@@ -527,6 +564,46 @@ export async function POST(req: NextRequest) {
       } else {
         const summary = await buildMonthlySummary(supabase, summaryProfile.id);
         await pushToLine(lineUserId, summary);
+      }
+      continue;
+    }
+
+    // --- Rule creation via chat ---
+    // Pattern: "rule chat: keyword = category" or "rule slip: keyword = category"
+    const ruleCommandMatch = text.match(/^rule\s+(chat|slip)\s*:\s*(.*)$/i);
+    if (ruleCommandMatch) {
+      const [, sourceRaw, rest] = ruleCommandMatch;
+      const eqIndex = rest.indexOf("=");
+      const keyword = eqIndex >= 0 ? rest.slice(0, eqIndex).trim() : "";
+      const category = eqIndex >= 0 ? rest.slice(eqIndex + 1).trim() : "";
+
+      if (!keyword || !category) {
+        await pushToLine(lineUserId, "รูปแบบไม่ถูกต้องครับ ลองใหม่เป็น: rule chat: ข้าว = food");
+        continue;
+      }
+
+      const source = sourceRaw.toLowerCase() as "chat" | "slip";
+      const sourceType = source === "chat" ? "chat" : "ocr";
+
+      const { data: ruleProfile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("line_user_id", lineUserId)
+        .single();
+
+      if (!ruleProfile) {
+        await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+        continue;
+      }
+
+      const { error: ruleError } = await supabase
+        .from("category_rules")
+        .insert({ user_id: ruleProfile.id, keyword: keyword.toLowerCase(), category, source_type: sourceType });
+
+      if (ruleError) {
+        await pushToLine(lineUserId, "บันทึกกฎไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+      } else {
+        await pushToLine(lineUserId, `บันทึกกฎเรียบร้อย! ถ้าเจอ ${keyword} ใน ${source} จะจัดเป็น ${category} ให้ครับ`);
       }
       continue;
     }

@@ -73,6 +73,13 @@ export default function SettingsView() {
   const [respCategoryFilter, setRespCategoryFilter] = useState("");
   const [collapsedRespCats, setCollapsedRespCats] = useState<Set<string>>(new Set());
 
+  // Admin: bot help message
+  const [helpMessage, setHelpMessage] = useState("");
+  const [helpMessageLoading, setHelpMessageLoading] = useState(false);
+  const [helpMessageSaving, setHelpMessageSaving] = useState(false);
+  const [helpMessageSaved, setHelpMessageSaved] = useState(false);
+  const [helpMessageError, setHelpMessageError] = useState("");
+
   useEffect(() => {
     fetchProfile();
     fetchCategories();
@@ -95,6 +102,7 @@ export default function SettingsView() {
     if (role === "admin") {
       fetchUsers();
       fetchLineResponses();
+      fetchHelpMessage();
     }
   }
 
@@ -372,6 +380,43 @@ export default function SettingsView() {
     }
     setLineResponses(prev => prev.filter(r => r.id !== id));
     setDeletingRespId(null);
+  }
+
+  async function fetchHelpMessage() {
+    setHelpMessageLoading(true);
+    setHelpMessageError("");
+    const res = await fetch("/api/admin/bot-settings?key=help_message");
+    if (!res.ok) {
+      const body = await res.json();
+      setHelpMessageError(body.error ?? "Failed to load help message.");
+      setHelpMessageLoading(false);
+      return;
+    }
+    const { setting } = await res.json();
+    setHelpMessage(setting.value);
+    setHelpMessageLoading(false);
+  }
+
+  async function saveHelpMessage() {
+    const value = helpMessage.trim();
+    if (!value) return;
+    setHelpMessageSaving(true);
+    setHelpMessageError("");
+    setHelpMessageSaved(false);
+    const res = await fetch("/api/admin/bot-settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "help_message", value }),
+    });
+    if (!res.ok) {
+      const body = await res.json();
+      setHelpMessageError(body.error ?? "Failed to save help message.");
+      setHelpMessageSaving(false);
+      return;
+    }
+    setHelpMessageSaving(false);
+    setHelpMessageSaved(true);
+    setTimeout(() => setHelpMessageSaved(false), 2000);
   }
 
   const roleBadge = (role: Role) => (
@@ -813,6 +858,57 @@ export default function SettingsView() {
                   </div>
                 );
               })()
+            )}
+          </div>
+        )}
+
+        {/* Admin: Bot Help Message */}
+        {userRole === "admin" && (
+          <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+            <div className="flex items-center gap-2 mb-1">
+              <MessageSquare size={15} style={{ color: "#06c755" }} />
+              <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Bot Help Message</h2>
+            </div>
+            <p className="text-xs font-semibold mb-3" style={{ color: "#9ca3af" }}>
+              Sent when a user types <code className="font-bold">help</code> or <code className="font-bold">ช่วยด้วย</code> to the LINE bot.
+            </p>
+
+            {helpMessageError && (
+              <p className="text-xs font-semibold px-3 py-2 rounded-xl mb-3" style={{ background: "#fef2f2", color: "#ef4444" }}>
+                {helpMessageError}
+              </p>
+            )}
+
+            {helpMessageLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 size={20} className="animate-spin" style={{ color: "#a78bfa" }} />
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <textarea
+                  value={helpMessage}
+                  onChange={e => setHelpMessage(e.target.value)}
+                  rows={10}
+                  className="w-full rounded-xl px-3 py-2.5 text-xs font-semibold outline-none resize-y"
+                  style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+                />
+                <button
+                  onClick={saveHelpMessage}
+                  disabled={helpMessageSaving || !helpMessage.trim()}
+                  className="w-full py-2.5 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
+                  style={{
+                    background: helpMessageSaved
+                      ? "linear-gradient(135deg, #10b981, #059669)"
+                      : "linear-gradient(135deg, #06c755, #00b248)",
+                    opacity: helpMessageSaving || !helpMessage.trim() ? 0.6 : 1,
+                  }}
+                >
+                  {helpMessageSaving
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : helpMessageSaved ? "Saved ✓" : "Save"
+                  }
+                </button>
+              </div>
             )}
           </div>
         )}
