@@ -502,6 +502,109 @@ async function continueAddCategoryFlow(
     .eq("id", profileId);
 }
 
+// Shared by the "cats"/"categories" text command and the "หมวดหมู่"
+// Rich Menu submenu option 1, so both entry points behave identically.
+async function sendCategoryList(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  profileId: string
+): Promise<void> {
+  const { data: categories } = await supabase
+    .from("categories")
+    .select("name, type")
+    .eq("user_id", profileId)
+    .order("name");
+
+  if (!categories || categories.length === 0) {
+    await pushToLine(lineUserId, "ไม่มีหมวดหมู่ให้ใช้ ลองพิมพ์ 'cat' เพื่อเพิ่มหมวดหมู่ใหม่");
+    return;
+  }
+
+  const expenses = categories.filter((c) => c.type === "expense").map((c) => c.name);
+  const incomes = categories.filter((c) => c.type === "income").map((c) => c.name);
+
+  let message = "📂 หมวดหมู่ที่มี\n━━━━━━━━━━━━━\n";
+  if (expenses.length > 0) {
+    message += "💸 รายจ่าย:\n" + expenses.map((c) => `• ${c}`).join("\n") + "\n\n";
+  }
+  if (incomes.length > 0) {
+    message += "💰 รายรับ:\n" + incomes.map((c) => `• ${c}`).join("\n");
+  }
+
+  await pushToLine(lineUserId, message);
+}
+
+// --- Category submenu (Rich Menu "หมวดหมู่" button) ---
+// Asks the user to choose "1: view all" or "2: add new" before acting,
+// same pending-state pattern as the add-rule/add-category flows.
+async function startCategoryMenuFlow(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("line_user_id", lineUserId)
+    .single();
+
+  if (!profile) {
+    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ line_pending_action: "category_menu", line_pending_data: null })
+    .eq("id", profile.id);
+
+  if (error) {
+    console.log("[category-menu-flow] failed to save pending state:", error.message);
+    await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    return;
+  }
+
+  await pushToLine(
+    lineUserId,
+    "เลือกทำรายการ:\n1: แสดงหมวดหมู่ทั้งหมด\n2: เพิ่มหมวดหมู่/กฎใหม่\n\nพิมพ์ cc เพื่อยกเลิก"
+  );
+}
+
+async function continueCategoryMenuFlow(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  profileId: string,
+  text: string
+): Promise<void> {
+  if (/^(cancel|cc|ยกเลิก)$/i.test(text)) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
+    return;
+  }
+
+  if (text === "1" || /^แสดงหมวดหมู่/i.test(text)) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await sendCategoryList(supabase, lineUserId, profileId);
+    return;
+  }
+
+  if (text === "2" || /^เพิ่มหมวดหมู่/i.test(text)) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await startAddCategoryFlow(supabase, lineUserId);
+    return;
+  }
+
+  await pushToLine(lineUserId, "พิมพ์ 1 หรือ 2 นะครับ (หรือ cc เพื่อยกเลิก)");
+}
+
 async function startAddRuleFlow(
   supabase: ReturnType<typeof serviceClient>,
   lineUserId: string
@@ -1152,6 +1255,11 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    if (flowProfile?.line_pending_action === "category_menu") {
+      await continueCategoryMenuFlow(supabase, lineUserId, flowProfile.id, text);
+      continue;
+    }
+
     if (flowProfile?.line_pending_action?.startsWith("add_category")) {
       await continueAddCategoryFlow(
         supabase,
@@ -1207,7 +1315,7 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Help command ---
-    if (/^(help|ช่วยด้วย|คู่มือ)$/i.test(text)) {
+    if (/^(help|ช่วยด้วย|คู่มือ|วิธีใช้)$/i.test(text)) {
       await pushToLine(lineUserId, await buildHelpMessage(supabase));
       continue;
     }
@@ -1299,7 +1407,7 @@ export async function POST(req: NextRequest) {
 
     // --- Show last 5 transactions (chat and OCR both write to the same
     // transactions table with no source column, so this covers both) ---
-    if (/^(show|แสดง)$/i.test(text)) {
+    if (/^(show|แสดง|รายการล่าสุด)$/i.test(text)) {
       const { data: showProfile } = await supabase
         .from("profiles")
         .select("id")
@@ -1348,35 +1456,19 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const { data: categories } = await supabase
-        .from("categories")
-        .select("name, type")
-        .eq("user_id", profile.id)
-        .order("name");
-
-      if (!categories || categories.length === 0) {
-        await pushToLine(lineUserId, "ไม่มีหมวดหมู่ให้ใช้ ลองพิมพ์ 'cat' เพื่อเพิ่มหมวดหมู่ใหม่");
-        continue;
-      }
-
-      const expenses = categories.filter(c => c.type === "expense").map(c => c.name);
-      const incomes = categories.filter(c => c.type === "income").map(c => c.name);
-
-      let message = "📂 หมวดหมู่ที่มี\n━━━━━━━━━━━━━\n";
-      if (expenses.length > 0) {
-        message += "💸 รายจ่าย:\n" + expenses.map(c => `• ${c}`).join("\n") + "\n\n";
-      }
-      if (incomes.length > 0) {
-        message += "💰 รายรับ:\n" + incomes.map(c => `• ${c}`).join("\n");
-      }
-
-      await pushToLine(lineUserId, message);
+      await sendCategoryList(supabase, lineUserId, profile.id);
       continue;
     }
 
     // --- Add category guided flow ---
     if (/^cat$/i.test(text)) {
       await startAddCategoryFlow(supabase, lineUserId);
+      continue;
+    }
+
+    // --- Category submenu (Rich Menu "หมวดหมู่" button) ---
+    if (/^หมวดหมู่$/i.test(text)) {
+      await startCategoryMenuFlow(supabase, lineUserId);
       continue;
     }
 

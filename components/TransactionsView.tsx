@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Download, RefreshCw, AlertCircle, Loader2 } from "lucide-react";
 import { supabase, Transaction } from "@/lib/supabase";
 import RecentTransactions from "./RecentTransactions";
@@ -44,16 +44,26 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
+  // Only default the filter to "current" on the very first load — later
+  // refreshes (e.g. pull-to-refresh) should preserve whatever the user picked.
+  const isFirstLoad = useRef(true);
+
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
     setError("");
 
-    // Get current user's name
+    // Get current user's name (profiles.full_name is the source of truth;
+    // user_metadata is only a fallback since it's rarely populated)
     const { data: { user } } = await supabase.auth.getUser();
-    if (user?.user_metadata?.full_name) {
-      setCurrentUser(user.user_metadata.full_name);
-      setSelectedSpender("current");
+    if (user) {
+      const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
+      const name = profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0];
+      if (name) {
+        setCurrentUser(name);
+        if (isFirstLoad.current) setSelectedSpender("current");
+      }
     }
+    isFirstLoad.current = false;
 
     const { data, error: err } = await supabase
       .from("transactions")
