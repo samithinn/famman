@@ -1,15 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { buildMonthlySummary, pushToLine } from "@/lib/line-utils";
+import { buildDailySummary, buildMonthlySummary, pushToLine } from "@/lib/line-utils";
 
 type LineSource = { userId?: string; type: string };
 type LineMessage = { type: string; text?: string };
+type LinePostback = { data: string };
 type LineEvent = {
   type: string;
   replyToken?: string;
   source?: LineSource;
   message?: LineMessage;
+  postback?: LinePostback;
 };
 
 function serviceClient() {
@@ -281,8 +283,11 @@ const HELP_MESSAGE_FALLBACK = [
   "🧾 เพิ่มกฎผ่านสลิป:",
   "rule slip: [keyword] = [category]",
   "",
+  "📊 ดูสรุปวันนี้:",
+  "สรุปรายวัน",
+  "",
   "📊 ดูสรุปเดือนนี้:",
-  "summary หรือ สรุป",
+  "summary, สรุป หรือ สรุปรายเดือน",
   "━━━━━━━━━━━━━",
   "❓ พิมพ์ help หรือ ช่วยด้วย เพื่อดูคำสั่งนี้อีกครั้ง",
 ].join("\n");
@@ -298,6 +303,69 @@ async function buildHelpMessage(supabase: ReturnType<typeof serviceClient>): Pro
 
   if (error || !data?.value) return HELP_MESSAGE_FALLBACK;
   return data.value;
+}
+
+// Shared by the "สรุปรายวัน/สรุปรายเดือน" text commands and the matching
+// Rich Menu postback actions so both entry points behave identically.
+async function handleSummaryCommand(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  period: "daily" | "monthly"
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("line_user_id", lineUserId)
+    .single();
+
+  if (!profile) {
+    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    return;
+  }
+
+  const summary =
+    period === "daily"
+      ? await buildDailySummary(supabase, profile.id)
+      : await buildMonthlySummary(supabase, profile.id);
+  await pushToLine(lineUserId, summary);
+}
+
+const ADD_RULE_PROMPT = [
+  "🔖 เพิ่มกฎจัดหมวดหมู่",
+  "━━━━━━━━━━━━━",
+  "พิมพ์คำสั่งตามรูปแบบนี้:",
+  "",
+  "rule chat: [keyword] = [category]",
+  "rule slip: [keyword] = [category]",
+  "",
+  "ตัวอย่าง: rule chat: ข้าว = food",
+].join("\n");
+
+// Routes Rich Menu button taps (LINE "postback" events). Data is a query
+// string so it's extensible, e.g. "action=daily_summary".
+async function handlePostback(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  data: string
+): Promise<void> {
+  const action = new URLSearchParams(data).get("action");
+
+  switch (action) {
+    case "daily_summary":
+      await handleSummaryCommand(supabase, lineUserId, "daily");
+      return;
+    case "monthly_summary":
+      await handleSummaryCommand(supabase, lineUserId, "monthly");
+      return;
+    case "help":
+      await pushToLine(lineUserId, await buildHelpMessage(supabase));
+      return;
+    case "add_rule":
+      await pushToLine(lineUserId, ADD_RULE_PROMPT);
+      return;
+    default:
+      console.log(`[postback] unrecognized action in data "${data}"`);
+  }
 }
 
 function buildSuccessMessage(personality: string, amount: number, catLabel: string): string {
@@ -510,11 +578,19 @@ export async function POST(req: NextRequest) {
   const supabase = serviceClient();
 
   for (const event of events) {
-    if (event.type !== "message" || event.message?.type !== "text") continue;
     const lineUserId = event.source?.userId;
+    if (!lineUserId) continue;
+
+    // --- Rich Menu button taps ---
+    if (event.type === "postback") {
+      await handlePostback(supabase, lineUserId, event.postback?.data ?? "");
+      continue;
+    }
+
+    if (event.type !== "message" || event.message?.type !== "text") continue;
     const text = (event.message.text ?? "").trim();
 
-    if (!lineUserId || !text) continue;
+    if (!text) continue;
 
     // --- Account linking ---
     if (/^link\s+/i.test(text)) {
@@ -547,24 +623,24 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Help command ---
-    if (/^(help|ช่วยด้วย)$/i.test(text)) {
+    if (/^(help|ช่วยด้วย|คู่มือ)$/i.test(text)) {
       await pushToLine(lineUserId, await buildHelpMessage(supabase));
       continue;
     }
 
-    // --- Summary command ---
-    if (/^(summary|สรุป)$/i.test(text)) {
-      const { data: summaryProfile } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("line_user_id", lineUserId)
-        .single();
-      if (!summaryProfile) {
-        await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
-      } else {
-        const summary = await buildMonthlySummary(supabase, summaryProfile.id);
-        await pushToLine(lineUserId, summary);
-      }
+    // --- Summary commands ---
+    if (/^สรุปรายวัน$/i.test(text)) {
+      await handleSummaryCommand(supabase, lineUserId, "daily");
+      continue;
+    }
+    if (/^(summary|สรุป|สรุปรายเดือน)$/i.test(text)) {
+      await handleSummaryCommand(supabase, lineUserId, "monthly");
+      continue;
+    }
+
+    // --- Add-rule prompt (Rich Menu "เพิ่มกฎ" button, or typed directly) ---
+    if (/^(เพิ่มกฎ|add rule)$/i.test(text)) {
+      await pushToLine(lineUserId, ADD_RULE_PROMPT);
       continue;
     }
 

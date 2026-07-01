@@ -66,6 +66,45 @@ export async function buildMonthlySummary(
   return msg;
 }
 
+export async function buildDailySummary(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, any, any>,
+  userId: string
+): Promise<string> {
+  const now = new Date();
+  const todayStr = now.toISOString().split("T")[0];
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split("T")[0];
+  const [labelYear, labelMonth, labelDay] = todayStr.split("-").map(Number);
+  const dateLabel = `${labelDay} ${THAI_MONTHS[labelMonth - 1]} ${labelYear}`;
+
+  // gte/lt range (not eq) because transaction dates are stored either as
+  // plain "YYYY-MM-DD" (chat) or full ISO timestamps (shortcut/OCR).
+  const { data: txns } = await supabase
+    .from("transactions")
+    .select("amount, type")
+    .eq("user_id", userId)
+    .gte("date", todayStr)
+    .lt("date", tomorrowStr);
+
+  const expenses = (txns ?? [])
+    .filter((t: { type: string }) => t.type === "expense")
+    .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+  const income = (txns ?? [])
+    .filter((t: { type: string }) => t.type === "income")
+    .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+  const net = income - expenses;
+
+  let msg = `📅 สรุปวันนี้ (${dateLabel})\n`;
+  msg += `━━━━━━━━━━━━━\n`;
+  msg += `💸 รายจ่าย:  ${fmt(expenses)}\n`;
+  msg += `💰 รายรับ:   ${fmt(income)}\n`;
+  msg += `💵 คงเหลือ:  ${net >= 0 ? "+" : ""}${fmt(net)}`;
+
+  return msg;
+}
+
 export async function pushToLine(lineUserId: string, text: string): Promise<void> {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   if (!token) return;
