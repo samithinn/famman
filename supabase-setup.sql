@@ -107,3 +107,56 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_last_response text;
 
 -- 12. Change transactions.date from date to timestamptz to store time of transaction
 ALTER TABLE transactions ALTER COLUMN date TYPE timestamptz USING date::timestamptz;
+
+-- 13. line_responses: split bot replies by transaction type (income vs expense)
+CREATE TABLE IF NOT EXISTS line_responses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category text NOT NULL,
+  response_text text NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Existing rows were all written for expense replies, so default them to 'expense'
+ALTER TABLE line_responses ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'expense'
+  CHECK (type IN ('income', 'expense'));
+
+-- Seed witty income replies for Salary / Teach / Bonus categories (skips rows that already exist)
+INSERT INTO line_responses (category, response_text, type)
+SELECT v.category, v.response_text, v.type
+FROM (VALUES
+  ('Salary', 'เงินเดือนเข้าแล้ว! เตรียมตัวเสียภาษีให้รัฐอย่างภาคภูมิใจได้เลยจ้าาา', 'income'),
+  ('Salary', 'โอ้โห! เงินเดือนออกแล้วครับคุณพี่ เห็นตัวเลขแล้วอยากจะกราบงามๆ 3 ที', 'income'),
+  ('Salary', 'ยอดเงินเดือนเข้าบัญชีแล้วนะ รีบใช้ก่อนที่มันจะระเหยหายไปในพริบตา!', 'income'),
+  ('Salary', 'เงินเดือนเข้าแล้ว! วันนี้คุณพี่จะเป็นเศรษฐีชั่วคราวซักกี่นาทีดีครับ?', 'income'),
+  ('Salary', 'บันทึกรายรับให้แล้วนะ เงินเดือนเข้าเยอะขนาดนี้ มื้อเย็นขอจัดเต็มนะ!', 'income'),
+  ('Teach', 'ค่าสอนมาแล้ว! รวยแล้วจ้าาา วันนี้จะซื้ออะไรเปย์ตัวเองดีครับ?', 'income'),
+  ('Teach', 'บันทึกรายรับให้แล้วครับ นี่คือค่าตอบแทนจากการปล่อยพลังสอนใช่ไหมเนี่ย สุดยอด!', 'income'),
+  ('Teach', 'เงินค่าสอนเข้าบัญชีแล้วครับคุณครู เก่งมาก! เดี๋ยวบอทเก็บเงินไว้ให้ (อย่าเพิ่งเผลอใช้หมดนะ)', 'income'),
+  ('Teach', 'รายรับจากการสอนเข้าแล้วนะ ได้เงินจากความรู้เนี่ยมันภูมิใจจริงๆ เลยเนอะ', 'income'),
+  ('Teach', 'บวกเลขเพิ่มให้แล้วครับ! เงินค่าสอนเข้าแล้ว ยอดนี้เก็บไว้ยามฉุกเฉินหรือเอาไปช็อปปิ้งดีครับ?', 'income'),
+  ('Bonus', 'โบนัสราชการมาแล้ว! โอ้ววววว ความรวยเป็นเหตุสังเกตได้', 'income'),
+  ('Bonus', 'บันทึกรายรับโบนัสให้แล้วครับ! อย่าเพิ่งรีบเอาไปละลายหมดนะ เก็บไว้เป็นขวัญถุงบ้าง!', 'income'),
+  ('Bonus', 'โบนัสออกแล้วครับท่าน! ยินดีด้วยนะที่ความขยันเข้าตาเบื้องบนซักที!', 'income'),
+  ('Bonus', 'ว้าว! โบนัสเข้า บอทกดบันทึกรัวๆ เลยครับ ยอดนี้ขอให้เก็บไว้ใช้ให้มีความสุขนะ', 'income'),
+  ('Bonus', 'โบนัสราชการเข้าแล้วจ้า! รวยๆ เฮงๆ แล้วอย่าลืมเลี้ยงกาแฟบอทบ้างนะ 555', 'income')
+) AS v(category, response_text, type)
+WHERE NOT EXISTS (
+  SELECT 1 FROM line_responses lr
+  WHERE lr.category = v.category AND lr.response_text = v.response_text
+);
+
+-- 14. categories: split expense vs income so the dashboard and transaction
+--     forms can filter by transaction type instead of showing one mixed list.
+--     Existing categories were all created for expenses, so they backfill as 'expense'.
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'expense'
+  CHECK (type IN ('income', 'expense'));
+
+-- Seed default income categories for all existing users (matches the income
+-- bot-response categories from the LINE personality feature)
+INSERT INTO categories (id, name, user_id, type)
+SELECT gen_random_uuid(), v.name, u.id, 'income'
+FROM auth.users u
+CROSS JOIN (VALUES ('Salary'), ('Teach'), ('Bonus')) AS v(name)
+WHERE NOT EXISTS (
+  SELECT 1 FROM categories c WHERE c.user_id = u.id AND c.name = v.name
+);

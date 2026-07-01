@@ -4,10 +4,12 @@ import { useState, useEffect } from "react";
 import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User, MessageSquare, Zap } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-type Category = { id: string; name: string };
+type CatType = "expense" | "income";
+type Category = { id: string; name: string; type: CatType };
 type Role = "admin" | "user";
 type UserEntry = { id: string; email: string; full_name: string; role: Role };
-type LineResponse = { id: string; category: string; response_text: string };
+type ResponseType = "income" | "expense";
+type LineResponse = { id: string; category: string; response_text: string; type: ResponseType };
 
 export default function SettingsView() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -28,10 +30,12 @@ export default function SettingsView() {
   // Categories
   const [categories, setCategories] = useState<Category[]>([]);
   const [catLoading, setCatLoading] = useState(true);
-  const [newCatName, setNewCatName] = useState("");
+  const [newExpenseCatName, setNewExpenseCatName] = useState("");
+  const [newIncomeCatName, setNewIncomeCatName] = useState("");
   const [addingCat, setAddingCat] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editType, setEditType] = useState<CatType>("expense");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [catError, setCatError] = useState("");
 
@@ -57,10 +61,12 @@ export default function SettingsView() {
   const [lineRespError, setLineRespError] = useState("");
   const [newRespCategory, setNewRespCategory] = useState("");
   const [newRespText, setNewRespText] = useState("");
+  const [newRespType, setNewRespType] = useState<ResponseType>("expense");
   const [addingResp, setAddingResp] = useState(false);
   const [editingRespId, setEditingRespId] = useState<string | null>(null);
   const [editRespCategory, setEditRespCategory] = useState("");
   const [editRespText, setEditRespText] = useState("");
+  const [editRespType, setEditRespType] = useState<ResponseType>("expense");
   const [deletingRespId, setDeletingRespId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -185,7 +191,7 @@ export default function SettingsView() {
 
   async function fetchCategories() {
     setCatLoading(true);
-    const { data } = await supabase.from("categories").select("id, name").order("name");
+    const { data } = await supabase.from("categories").select("id, name, type").order("name");
     setCategories((data as Category[]) ?? []);
     setCatLoading(false);
   }
@@ -238,8 +244,8 @@ export default function SettingsView() {
     setDeletingRuleId(null);
   }
 
-  async function addCategory() {
-    const name = newCatName.trim();
+  async function addCategory(type: CatType) {
+    const name = (type === "income" ? newIncomeCatName : newExpenseCatName).trim();
     if (!name) return;
     setAddingCat(true);
     setCatError("");
@@ -247,14 +253,14 @@ export default function SettingsView() {
     if (!user) { setAddingCat(false); return; }
     const { data, error: err } = await supabase
       .from("categories")
-      .insert({ name, user_id: user.id })
-      .select("id, name")
+      .insert({ name, user_id: user.id, type })
+      .select("id, name, type")
       .single();
     if (err) { setCatError(err.message); setAddingCat(false); return; }
     setCategories(prev =>
       [...prev, data as Category].sort((a, b) => a.name.localeCompare(b.name))
     );
-    setNewCatName("");
+    if (type === "income") setNewIncomeCatName(""); else setNewExpenseCatName("");
     setAddingCat(false);
   }
 
@@ -262,10 +268,10 @@ export default function SettingsView() {
     const name = editName.trim();
     if (!name) return;
     setCatError("");
-    const { error: err } = await supabase.from("categories").update({ name }).eq("id", id);
+    const { error: err } = await supabase.from("categories").update({ name, type: editType }).eq("id", id);
     if (err) { setCatError(err.message); return; }
     setCategories(prev =>
-      prev.map(c => c.id === id ? { ...c, name } : c)
+      prev.map(c => c.id === id ? { ...c, name, type: editType } : c)
         .sort((a, b) => a.name.localeCompare(b.name))
     );
     setEditingId(null);
@@ -305,7 +311,7 @@ export default function SettingsView() {
     const res = await fetch("/api/admin/line-responses", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: cat, response_text: txt }),
+      body: JSON.stringify({ category: cat, response_text: txt, type: newRespType }),
     });
     if (!res.ok) {
       const body = await res.json();
@@ -328,7 +334,7 @@ export default function SettingsView() {
     const res = await fetch("/api/admin/line-responses", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, category: cat, response_text: txt }),
+      body: JSON.stringify({ id, category: cat, response_text: txt, type: editRespType }),
     });
     if (!res.ok) {
       const body = await res.json();
@@ -336,7 +342,7 @@ export default function SettingsView() {
       return;
     }
     setLineResponses(prev =>
-      prev.map(r => r.id === id ? { ...r, category: cat, response_text: txt } : r)
+      prev.map(r => r.id === id ? { ...r, category: cat, response_text: txt, type: editRespType } : r)
         .sort((a, b) => a.category.localeCompare(b.category))
     );
     setEditingRespId(null);
@@ -369,6 +375,123 @@ export default function SettingsView() {
       {role}
     </span>
   );
+
+  const renderCategorySection = (type: CatType, label: string, addValue: string, setAddValue: (v: string) => void) => {
+    const list = categories.filter(c => c.type === type);
+    const gradient = type === "income" ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, #ec4899, #8b5cf6)";
+
+    return (
+      <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+        <h2 className="text-sm font-black mb-1" style={{ color: "#1f2937" }}>{label}</h2>
+        <p className="text-xs font-semibold mb-4" style={{ color: "#9ca3af" }}>
+          Customize your {type} categories
+        </p>
+
+        {/* Add new */}
+        <div className="flex gap-2 mb-4">
+          <input
+            type="text"
+            placeholder="New category name…"
+            value={addValue}
+            onChange={e => setAddValue(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && addCategory(type)}
+            className="flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
+            style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+          />
+          <button
+            onClick={() => addCategory(type)}
+            disabled={addingCat || !addValue.trim()}
+            className="px-4 py-2.5 rounded-xl text-sm font-extrabold text-white flex items-center gap-1.5"
+            style={{
+              background: gradient,
+              opacity: addingCat || !addValue.trim() ? 0.5 : 1,
+            }}
+          >
+            {addingCat
+              ? <Loader2 size={14} className="animate-spin" />
+              : <><Plus size={14} /> Add</>
+            }
+          </button>
+        </div>
+
+        {catLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <span className="loading loading-spinner loading-md" style={{ color: "#a78bfa" }} />
+          </div>
+        ) : list.length === 0 ? (
+          <p className="text-xs font-semibold text-center py-4" style={{ color: "#9ca3af" }}>
+            No {type} categories yet. Add one above.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {list.map(cat => (
+              <div
+                key={cat.id}
+                className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+                style={{ background: "#fafafa", border: "1px solid #f3e8ff" }}
+              >
+                {editingId === cat.id ? (
+                  <>
+                    <select
+                      value={editType}
+                      onChange={e => setEditType(e.target.value as CatType)}
+                      className="rounded-lg px-2 py-1.5 text-xs font-extrabold outline-none appearance-none flex-shrink-0"
+                      style={{ border: "2px solid #f3e8ff", color: editType === "income" ? "#059669" : "#dc2626" }}
+                    >
+                      <option value="expense">Expense</option>
+                      <option value="income">Income</option>
+                    </select>
+                    <input
+                      autoFocus
+                      type="text"
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") saveEdit(cat.id);
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                      className="flex-1 text-sm font-semibold bg-transparent outline-none"
+                      style={{ color: "#374151" }}
+                    />
+                    <button onClick={() => saveEdit(cat.id)} className="p-1 rounded-lg" style={{ color: "#10b981" }}>
+                      <Check size={14} />
+                    </button>
+                    <button onClick={() => setEditingId(null)} className="p-1 rounded-lg" style={{ color: "#9ca3af" }}>
+                      <X size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-sm font-semibold" style={{ color: "#374151" }}>
+                      {cat.name}
+                    </span>
+                    <button
+                      onClick={() => { setEditingId(cat.id); setEditName(cat.name); setEditType(cat.type); setCatError(""); }}
+                      className="p-1 rounded-lg"
+                      style={{ color: "#7c3aed" }}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      onClick={() => deleteCategory(cat.id)}
+                      disabled={deletingId === cat.id}
+                      className="p-1 rounded-lg"
+                      style={{ color: "#ef4444" }}
+                    >
+                      {deletingId === cat.id
+                        ? <Loader2 size={13} className="animate-spin" />
+                        : <Trash2 size={13} />
+                      }
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -472,12 +595,21 @@ export default function SettingsView() {
               <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>LINE Bot Personality</h2>
             </div>
             <p className="text-xs font-semibold mb-4" style={{ color: "#9ca3af" }}>
-              Sarcastic replies sent after each transaction. Category is a keyword matched against the transaction category (e.g. <code className="font-bold">coffee</code>, <code className="font-bold">food</code>, <code className="font-bold">fuel</code>). Use <code className="font-bold">general</code> as fallback.
+              Sarcastic replies sent after each transaction. Category is a keyword matched against the transaction category (e.g. <code className="font-bold">coffee</code>, <code className="font-bold">food</code>, <code className="font-bold">fuel</code>). Use <code className="font-bold">general</code> as fallback. Type controls whether a reply can appear for income or expense transactions — they never mix.
             </p>
 
             {/* Add form */}
             <div className="space-y-2 mb-4">
               <div className="flex gap-2">
+                <select
+                  value={newRespType}
+                  onChange={e => setNewRespType(e.target.value as ResponseType)}
+                  className="w-24 rounded-xl px-2 py-2 text-xs font-extrabold outline-none flex-shrink-0 appearance-none"
+                  style={{ border: "2px solid #f3e8ff", color: newRespType === "income" ? "#059669" : "#dc2626" }}
+                >
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
+                </select>
                 <input
                   type="text"
                   placeholder="Category keyword…"
@@ -534,6 +666,15 @@ export default function SettingsView() {
                     {editingRespId === r.id ? (
                       <div className="space-y-1.5">
                         <div className="flex gap-2">
+                          <select
+                            value={editRespType}
+                            onChange={e => setEditRespType(e.target.value as ResponseType)}
+                            className="w-24 rounded-lg px-2 py-1.5 text-xs font-extrabold outline-none flex-shrink-0 appearance-none"
+                            style={{ border: "2px solid #f3e8ff", color: editRespType === "income" ? "#059669" : "#dc2626" }}
+                          >
+                            <option value="expense">Expense</option>
+                            <option value="income">Income</option>
+                          </select>
                           <input
                             autoFocus
                             type="text"
@@ -565,6 +706,16 @@ export default function SettingsView() {
                       <div className="flex items-start gap-2">
                         <span
                           className="text-xs font-extrabold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
+                          style={
+                            r.type === "income"
+                              ? { background: "#ecfdf5", color: "#059669", border: "1px solid #a7f3d0" }
+                              : { background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }
+                          }
+                        >
+                          {r.type}
+                        </span>
+                        <span
+                          className="text-xs font-extrabold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
                           style={{ background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0" }}
                         >
                           {r.category}
@@ -573,7 +724,7 @@ export default function SettingsView() {
                           {r.response_text}
                         </span>
                         <button
-                          onClick={() => { setEditingRespId(r.id); setEditRespCategory(r.category); setEditRespText(r.response_text); }}
+                          onClick={() => { setEditingRespId(r.id); setEditRespCategory(r.category); setEditRespText(r.response_text); setEditRespType(r.type); }}
                           className="p-1 rounded-lg flex-shrink-0"
                           style={{ color: "#7c3aed" }}
                         >
@@ -642,116 +793,17 @@ export default function SettingsView() {
           </div>
         </div>
 
-        {/* Expense Categories */}
-        <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-          <h2 className="text-sm font-black mb-1" style={{ color: "#1f2937" }}>Expense Categories</h2>
-          <p className="text-xs font-semibold mb-4" style={{ color: "#9ca3af" }}>
-            Customize your expense categories
+        {/* Categories */}
+        {catError && (
+          <p
+            className="text-xs font-semibold px-3 py-2 rounded-xl"
+            style={{ background: "#fef2f2", color: "#ef4444" }}
+          >
+            {catError}
           </p>
-
-          {/* Add new */}
-          <div className="flex gap-2 mb-4">
-            <input
-              type="text"
-              placeholder="New category name…"
-              value={newCatName}
-              onChange={e => setNewCatName(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && addCategory()}
-              className="flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
-              style={{ border: "2px solid #f3e8ff", color: "#374151" }}
-            />
-            <button
-              onClick={addCategory}
-              disabled={addingCat || !newCatName.trim()}
-              className="px-4 py-2.5 rounded-xl text-sm font-extrabold text-white flex items-center gap-1.5"
-              style={{
-                background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
-                opacity: addingCat || !newCatName.trim() ? 0.5 : 1,
-              }}
-            >
-              {addingCat
-                ? <Loader2 size={14} className="animate-spin" />
-                : <><Plus size={14} /> Add</>
-              }
-            </button>
-          </div>
-
-          {catError && (
-            <p
-              className="text-xs font-semibold px-3 py-2 rounded-xl mb-3"
-              style={{ background: "#fef2f2", color: "#ef4444" }}
-            >
-              {catError}
-            </p>
-          )}
-
-          {catLoading ? (
-            <div className="flex items-center justify-center py-6">
-              <span className="loading loading-spinner loading-md" style={{ color: "#a78bfa" }} />
-            </div>
-          ) : categories.length === 0 ? (
-            <p className="text-xs font-semibold text-center py-4" style={{ color: "#9ca3af" }}>
-              No categories yet. Add one above.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {categories.map(cat => (
-                <div
-                  key={cat.id}
-                  className="flex items-center gap-2 rounded-xl px-3 py-2.5"
-                  style={{ background: "#fafafa", border: "1px solid #f3e8ff" }}
-                >
-                  {editingId === cat.id ? (
-                    <>
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editName}
-                        onChange={e => setEditName(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === "Enter") saveEdit(cat.id);
-                          if (e.key === "Escape") setEditingId(null);
-                        }}
-                        className="flex-1 text-sm font-semibold bg-transparent outline-none"
-                        style={{ color: "#374151" }}
-                      />
-                      <button onClick={() => saveEdit(cat.id)} className="p-1 rounded-lg" style={{ color: "#10b981" }}>
-                        <Check size={14} />
-                      </button>
-                      <button onClick={() => setEditingId(null)} className="p-1 rounded-lg" style={{ color: "#9ca3af" }}>
-                        <X size={14} />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="flex-1 text-sm font-semibold" style={{ color: "#374151" }}>
-                        {cat.name}
-                      </span>
-                      <button
-                        onClick={() => { setEditingId(cat.id); setEditName(cat.name); setCatError(""); }}
-                        className="p-1 rounded-lg"
-                        style={{ color: "#7c3aed" }}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        onClick={() => deleteCategory(cat.id)}
-                        disabled={deletingId === cat.id}
-                        className="p-1 rounded-lg"
-                        style={{ color: "#ef4444" }}
-                      >
-                        {deletingId === cat.id
-                          ? <Loader2 size={13} className="animate-spin" />
-                          : <Trash2 size={13} />
-                        }
-                      </button>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
+        {renderCategorySection("expense", "Expense Categories 💳", newExpenseCatName, setNewExpenseCatName)}
+        {renderCategorySection("income", "Income Categories 💰", newIncomeCatName, setNewIncomeCatName)}
 
         {/* Auto-Categorization Rules */}
         <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>

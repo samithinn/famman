@@ -36,20 +36,23 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
   const [catLoading, setCatLoading] = useState(true);
 
   useEffect(() => {
+    setCatLoading(true);
     supabase
       .from("categories")
       .select("name")
+      .eq("type", txType)
       .order("name")
       .then(({ data }) => {
         const names = (data ?? []).map((c: { name: string }) => c.name);
         // Include the existing category even if it was removed from the list
-        if (transaction.category && !names.includes(transaction.category)) {
+        if (txType === (transaction.type ?? "expense") && transaction.category && !names.includes(transaction.category)) {
           names.unshift(transaction.category);
         }
         setCategories(names);
+        setForm(f => (names.includes(f.category) ? f : { ...f, category: names[0] ?? "" }));
         setCatLoading(false);
       });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [txType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveRule = async () => {
     if (!ruleKeyword.trim()) return;

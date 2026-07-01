@@ -133,21 +133,87 @@ function parseTransaction(
   return { amount, category: matched ?? "Other", note, type };
 }
 
+// Looks up the user's category_rules and, if the input text contains a
+// matching keyword, overrides an "Other" category with the rule's category.
+// Mutates `parsed.category` in place so every caller sees the final value.
+async function applyCategoryRules(
+  supabase: ReturnType<typeof serviceClient>,
+  profileId: string,
+  rawText: string,
+  parsed: { amount: number; category: string; note: string; type: "expense" | "income" }
+): Promise<void> {
+  if (parsed.category !== "Other") {
+    console.log(`[category-rules] category already resolved to "${parsed.category}" — skipping rule check`);
+    return;
+  }
+
+  const { data: rules, error } = await supabase
+    .from("category_rules")
+    .select("keyword, category")
+    .eq("user_id", profileId);
+
+  if (error) {
+    console.log("[category-rules] failed to load category_rules:", error.message);
+    return;
+  }
+
+  const lowerText = rawText.toLowerCase();
+  const hit = (rules ?? []).find(
+    (r: { keyword: string; category: string }) => lowerText.includes(r.keyword.toLowerCase())
+  );
+
+  if (hit) {
+    console.log(
+      `[category-rules] matched keyword "${hit.keyword}" in "${rawText}" -> category "${hit.category}" (was "Other")`
+    );
+    parsed.category = hit.category;
+  } else {
+    console.log(`[category-rules] no keyword match in "${rawText}" among ${(rules ?? []).length} rule(s) — keeping "Other"`);
+  }
+}
+
+const PERSONALITY_FALLBACK: Record<"expense" | "income", string[]> = {
+  expense: [
+    "บันทึกให้ละจ้า ไม่ต้องบ่นเรื่องเงินเลยนะ!",
+    "จัดไป! บันทึกยอดให้แล้วครับเจ้านาย",
+    "เรียบร้อย! หวังว่าวันนี้จะเหลือเงินกินข้าวนะ",
+  ],
+  income: [
+    "บันทึกรายรับให้แล้วครับ! รวยขึ้นอีกก้าวนะ",
+    "เงินเข้าแล้ว! จัดการบันทึกให้เรียบร้อยจ้า",
+    "เยี่ยม! บันทึกรายรับให้แล้วนะครับ ยินดีด้วย!",
+  ],
+};
+
+// Database-driven bot replies, split strictly by transaction type so an
+// income transaction can never surface an expense-flavored template.
+// Selection order: type-scoped category match -> type-scoped "general" -> hardcoded fallback for that type.
 async function pickPersonalityResponse(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: ReturnType<typeof serviceClient>,
   category: string,
+  type: "expense" | "income",
   profileId: string,
   lastResponse: string | null
 ): Promise<string> {
-  const FALLBACK = ["บันทึกให้ละจ้า ไม่ต้องบ่นเรื่องเงินเลยนะ!", "จัดไป! บันทึกยอดให้แล้วครับเจ้านาย", "เรียบร้อย! หวังว่าวันนี้จะเหลือเงินกินข้าวนะ"];
+  const fallbackPool = PERSONALITY_FALLBACK[type];
+  const pickFallback = () => fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
+
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("line_responses")
-      .select("category, response_text");
+      .select("category, response_text")
+      .eq("type", type);
+
+    if (error) {
+      console.log(`[personality] failed to load "${type}" responses:`, error.message);
+      return pickFallback();
+    }
 
     const responses = (data ?? []) as { category: string; response_text: string }[];
-    if (responses.length === 0) return FALLBACK[Math.floor(Math.random() * FALLBACK.length)];
+    if (responses.length === 0) {
+      console.log(`[personality] no "${type}" responses in DB — using hardcoded fallback`);
+      return pickFallback();
+    }
 
     const catLower = category.toLowerCase();
     const matched = responses.filter(
@@ -157,7 +223,10 @@ async function pickPersonalityResponse(
       ? matched
       : responses.filter(r => r.category === "general");
 
-    if (fullPool.length === 0) return FALLBACK[Math.floor(Math.random() * FALLBACK.length)];
+    if (fullPool.length === 0) {
+      console.log(`[personality] no "${type}" response for category "${category}" (and no general fallback) — using hardcoded fallback`);
+      return pickFallback();
+    }
 
     // Exclude the last-used response so it never repeats consecutively
     const pool = fullPool.length > 1
@@ -165,6 +234,7 @@ async function pickPersonalityResponse(
       : fullPool;
 
     const chosen = pool[Math.floor(Math.random() * pool.length)].response_text;
+    console.log(`[personality] type="${type}" category="${category}" -> picked from ${fullPool.length} candidate(s): "${chosen}"`);
 
     // Persist the chosen response so next call can exclude it
     await supabase
@@ -173,8 +243,9 @@ async function pickPersonalityResponse(
       .eq("id", profileId);
 
     return chosen;
-  } catch {
-    return FALLBACK[Math.floor(Math.random() * FALLBACK.length)];
+  } catch (err) {
+    console.log(`[personality] unexpected error selecting "${type}" response:`, err);
+    return pickFallback();
   }
 }
 
@@ -325,17 +396,7 @@ async function handleShortcutRequest(
   }
 
   // Smart categorization: scan rawText against the user's category_rules
-  if (parsed.category === "Other") {
-    const { data: rules } = await supabase
-      .from("category_rules")
-      .select("keyword, category")
-      .eq("user_id", profile.id);
-    const lowerText = text.toLowerCase();
-    const hit = (rules ?? []).find(
-      (r: { keyword: string; category: string }) => lowerText.includes(r.keyword)
-    );
-    if (hit) parsed.category = hit.category;
-  }
+  await applyCategoryRules(supabase, profile.id, text, parsed);
 
   const { data: authUser } = await supabase.auth.admin.getUserById(profile.id);
   const spender =
@@ -353,7 +414,7 @@ async function handleShortcutRequest(
     return NextResponse.json({ error: txError.message }, { status: 500 });
   }
 
-  const personality = await pickPersonalityResponse(supabase, parsed.category, profile.id, profile.line_last_response ?? null);
+  const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, profile.line_last_response ?? null);
   const recipientName = extractRecipientName(text, spender);
   const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, parsed.category === "Other");
   await pushToLine(lineUserId, reply);
@@ -489,6 +550,9 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    // Smart categorization: scan rawText against the user's category_rules
+    await applyCategoryRules(supabase, profile.id, text, parsed);
+
     const { data: authUser } = await supabase.auth.admin.getUserById(profile.id);
     const spender =
       profile.full_name ||
@@ -507,7 +571,7 @@ export async function POST(req: NextRequest) {
     }
 
     const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;
-    const personality = await pickPersonalityResponse(supabase, parsed.category, profile.id, (profile as Record<string, unknown>).line_last_response as string ?? null);
+    const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, (profile as Record<string, unknown>).line_last_response as string ?? null);
     await pushToLine(lineUserId, buildSuccessMessage(personality, parsed.amount, catLabel));
   }
 

@@ -30,7 +30,8 @@ export async function GET() {
   const service = serviceClient();
   const { data, error } = await service
     .from("line_responses")
-    .select("id, category, response_text, created_at")
+    .select("id, category, response_text, type, created_at")
+    .order("type")
     .order("category")
     .order("created_at");
 
@@ -42,16 +43,19 @@ export async function POST(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { category, response_text } = await req.json();
+  const { category, response_text, type } = await req.json();
   if (!category?.trim() || !response_text?.trim()) {
     return NextResponse.json({ error: "category and response_text are required" }, { status: 400 });
+  }
+  if (type !== "income" && type !== "expense") {
+    return NextResponse.json({ error: "type must be 'income' or 'expense'" }, { status: 400 });
   }
 
   const service = serviceClient();
   const { data, error } = await service
     .from("line_responses")
-    .insert({ category: category.trim(), response_text: response_text.trim() })
-    .select("id, category, response_text, created_at")
+    .insert({ category: category.trim(), response_text: response_text.trim(), type })
+    .select("id, category, response_text, type, created_at")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -62,15 +66,18 @@ export async function PATCH(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { id, category, response_text } = await req.json();
+  const { id, category, response_text, type } = await req.json();
   if (!id || !category?.trim() || !response_text?.trim()) {
     return NextResponse.json({ error: "id, category and response_text are required" }, { status: 400 });
+  }
+  if (type !== "income" && type !== "expense") {
+    return NextResponse.json({ error: "type must be 'income' or 'expense'" }, { status: 400 });
   }
 
   const service = serviceClient();
   const { error } = await service
     .from("line_responses")
-    .update({ category: category.trim(), response_text: response_text.trim() })
+    .update({ category: category.trim(), response_text: response_text.trim(), type })
     .eq("id", id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

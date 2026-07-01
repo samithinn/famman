@@ -99,19 +99,23 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
     resolveSpender().then(result => {
       if (result) setUsername(result.spender);
     });
-    loadCategories();
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadCategories() {
+  useEffect(() => {
+    if (!isOpen) return;
+    loadCategories(txType);
+  }, [isOpen, txType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadCategories(type: TxType) {
     setCatLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setCatLoading(false); return; }
-    let { data } = await supabase.from("categories").select("name").order("name");
-    if (!data || data.length === 0) {
+    let { data } = await supabase.from("categories").select("name").eq("type", type).order("name");
+    if ((!data || data.length === 0) && type === "expense") {
       await supabase
         .from("categories")
-        .insert(DEFAULT_CATEGORIES.map(name => ({ name, user_id: user.id })));
-      const res = await supabase.from("categories").select("name").order("name");
+        .insert(DEFAULT_CATEGORIES.map(name => ({ name, user_id: user.id, type: "expense" })));
+      const res = await supabase.from("categories").select("name").eq("type", "expense").order("name");
       data = res.data;
     }
     const names = (data ?? []).map((c: { name: string }) => c.name);
