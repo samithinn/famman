@@ -956,7 +956,7 @@ function buildSuccessMessage(personality: string, amount: number, catLabel: stri
   return `${personality} ${summary}`;
 }
 
-function extractRecipientName(rawText: string, senderName: string | null): string | null {
+function extractRecipientName(rawText: string): string | null {
   const lines = rawText.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
 
   // Priority 1: explicit "ผู้รับโอน" label — inline or next line
@@ -974,20 +974,20 @@ function extractRecipientName(rawText: string, senderName: string | null): strin
     }
   }
 
-  const isSender = (line: string) =>
-    senderName ? line === senderName || line.includes(senderName) : false;
-
-  // Priority 3: Thai honorifics. Standard slips list the sender (จาก) above
-  // the transfer arrow and the receiver (ไปยัง) below it, so the receiver is
-  // always the *second* honorific name on the slip, not the first. Preferring
-  // the last match (instead of the first non-sender match) keeps this correct
-  // even when isSender() can't exactly match the sender's OCR'd name.
-  // Includes the abbreviated "น.ส." form (not just "นาง"/"นางสาว"), since
-  // some slips (e.g. PromptPay e-Wallet) render it that way.
-  const honorificLines = lines.filter(
-    (line) => /^(นาย|นาง(?:สาว)?|น\.ส\.)\s*[฀-๿a-zA-Z]/.test(line) && !isSender(line)
+  // Priority 3: Thai name lines — honorific-prefixed ("นาย"/"นาง"/"นางสาว"/
+  // "น.ส.") or bare ("ชื่อ นามสกุล" with no title at all, which some banks
+  // use for the receiver on PromptPay transfers, e.g. ttb → PromptPay slips).
+  // Standard slips list the sender (จาก) above the transfer arrow and the
+  // receiver (ไปยัง) below it, so the receiver is always the *last* name-like
+  // line on the slip. Take the last one instead of trying to exclude the
+  // sender by string match — isSender() rarely matches, since the account's
+  // display name (e.g. "Sami") looks nothing like how the slip renders the
+  // full Thai name (e.g. "นาย ศมิติน กองแก้ว").
+  const nameLineBlacklist = new Set(["โอนเงินสำเร็จ", "ทำรายการสำเร็จ", "ค่าธรรมเนียม", "พร้อมเพย์", "บันทึกช่วยจำ"]);
+  const nameLines = lines.filter(
+    (line) => !nameLineBlacklist.has(line) && /^[฀-๿][฀-๿.]*(?:\s+[฀-๿.]+)+$/.test(line)
   );
-  if (honorificLines.length > 0) return honorificLines[honorificLines.length - 1];
+  if (nameLines.length > 0) return nameLines[nameLines.length - 1];
 
   // Priority 4: company / partnership — same "second one is the receiver" rule
   const companyLines = lines.filter((line) => /^(บริษัท|ห้างหุ้นส่วน)/.test(line));
@@ -1006,11 +1006,12 @@ function buildShortcutReply(
   amount: number,
   category: string,
   recipientName: string | null,
+  userNote: string,
   isOther: boolean
 ): string {
-  const recipient = recipientName ?? "ร้านค้า/ผู้รับ";
-  let msg = `${personality}\nยอด: ฿${amount.toLocaleString()}\nโอนให้: ${recipient}\nหมวด: ${category}`;
-  if (isOther) msg += `\n💡 ยังจัดหมวดไม่ได้ แก้ที่เว็บได้เลยนะ!`;
+  const detailLine = userNote ? `โน้ต: ${userNote}` : `โอนให้: ${recipientName ?? "ร้านค้า/ผู้รับ"}`;
+  let msg = `${personality}\nยอด: ฿${amount.toLocaleString()}\n${detailLine}\nหมวด: ${category}`;
+  if (isOther) msg += `\n💡 ยังจัดหมวดไม่ได้ แก้ที่แอพฯ ได้เลยนะ!`;
   return msg;
 }
 
@@ -1099,10 +1100,11 @@ async function handleShortcutRequest(
   // Receipt-extraction mode leaves parsed.note as almost the entire slip
   // (only the amount/date/time tokens are stripped) — keep just the
   // recipient name instead, so edit/delete/show don't echo the whole slip.
-  const recipientName = extractRecipientName(text, spender);
+  // A user-typed note always wins over the (sometimes unreliable) extracted
+  // recipient name.
+  const recipientName = extractRecipientName(text);
   const userNote = (body.note ?? "").trim();
-  const baseNote = recipientName ?? parsed.note.slice(0, 60).trim();
-  const note = userNote ? (baseNote ? `${baseNote} - ${userNote}` : userNote) : baseNote;
+  const note = userNote || recipientName || parsed.note.slice(0, 60).trim();
 
   const date = new Date().toISOString();
   const { data: txData, error: txError } = await supabase
@@ -1124,7 +1126,7 @@ async function handleShortcutRequest(
   }
 
   const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, profile.line_last_response ?? null);
-  const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, parsed.category === "Other");
+  const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, userNote, parsed.category === "Other");
   await pushToLine(lineUserId, reply);
 
   return NextResponse.json({ ok: true });
