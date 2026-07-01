@@ -309,10 +309,13 @@ const HELP_MESSAGE_FALLBACK = [
   "rule slip: [keyword] = [category]",
   "",
   "📊 ดูสรุปวันนี้:",
-  "สรุปรายวัน",
+  "สรุปรายวัน, รายวัน หรือ daily",
   "",
   "📊 ดูสรุปเดือนนี้:",
-  "summary, สรุป หรือ สรุปรายเดือน",
+  "สรุปรายเดือน, รายเดือน หรือ monthly",
+  "",
+  "📊 ดูสรุป (เลือกวัน/เดือน):",
+  "summary หรือ สรุป",
   "━━━━━━━━━━━━━",
   "❓ พิมพ์ help หรือ ช่วยด้วย เพื่อดูคำสั่งนี้อีกครั้ง",
 ].join("\n");
@@ -604,6 +607,73 @@ async function continueCategoryMenuFlow(
   }
 
   await pushToLine(lineUserId, "พิมพ์ 1 หรือ 2 นะครับ (หรือ cc เพื่อยกเลิก)");
+}
+
+// Bare "สรุป" is ambiguous (daily vs monthly), so it asks instead of
+// guessing — same pending-state pattern as the category menu above.
+async function startSummaryMenuFlow(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("line_user_id", lineUserId)
+    .single();
+
+  if (!profile) {
+    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ line_pending_action: "summary_menu", line_pending_data: null })
+    .eq("id", profile.id);
+
+  if (error) {
+    console.log("[summary-menu-flow] failed to save pending state:", error.message);
+    await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    return;
+  }
+
+  await pushToLine(lineUserId, "กด 1 เพื่อดูสรุปรายวัน หรือกด 2 เพื่อดูสรุปรายเดือน\n\nพิมพ์ cc เพื่อยกเลิก");
+}
+
+async function continueSummaryMenuFlow(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  profileId: string,
+  text: string
+): Promise<void> {
+  if (/^(cancel|cc|ยกเลิก)$/i.test(text)) {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
+    return;
+  }
+
+  if (text === "1") {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await handleSummaryCommand(supabase, lineUserId, "daily");
+    return;
+  }
+
+  if (text === "2") {
+    await supabase
+      .from("profiles")
+      .update({ line_pending_action: null, line_pending_data: null })
+      .eq("id", profileId);
+    await handleSummaryCommand(supabase, lineUserId, "monthly");
+    return;
+  }
+
+  await pushToLine(lineUserId, "กด 1 เพื่อดูสรุปรายวัน หรือกด 2 เพื่อดูสรุปรายเดือน (หรือ cc เพื่อยกเลิก)");
 }
 
 async function startAddRuleFlow(
@@ -1319,6 +1389,11 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    if (flowProfile?.line_pending_action === "summary_menu") {
+      await continueSummaryMenuFlow(supabase, lineUserId, flowProfile.id, text);
+      continue;
+    }
+
     if (flowProfile?.line_pending_action === "category_menu") {
       await continueCategoryMenuFlow(supabase, lineUserId, flowProfile.id, text);
       continue;
@@ -1460,12 +1535,16 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Summary commands ---
-    if (/^สรุปรายวัน$/i.test(text)) {
+    if (/^(สรุปรายวัน|รายวัน|daily)$/i.test(text)) {
       await handleSummaryCommand(supabase, lineUserId, "daily");
       continue;
     }
-    if (/^(summary|สรุป|สรุปรายเดือน)$/i.test(text)) {
+    if (/^(สรุปรายเดือน|รายเดือน|monthly)$/i.test(text)) {
       await handleSummaryCommand(supabase, lineUserId, "monthly");
+      continue;
+    }
+    if (/^(summary|สรุป)$/i.test(text)) {
+      await startSummaryMenuFlow(supabase, lineUserId);
       continue;
     }
 
