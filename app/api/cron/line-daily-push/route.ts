@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { buildMonthlySummary, pushToLine } from "@/lib/line-utils";
+import { buildMonthlySummary, buildSummaryFlex, pushToLine } from "@/lib/line-utils";
 
 function serviceClient() {
   return createClient(
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   for (const profile of profiles ?? []) {
     try {
       const summary = await buildMonthlySummary(supabase, profile.id);
-      await pushToLine(profile.line_user_id, `🌙 สรุปค่าใช้จ่ายประจำวันนี้\n\n${summary}`);
+      await pushToLine(profile.line_user_id, buildSummaryFlex(summary));
       results.push({ id: profile.id, status: "sent" });
     } catch (err) {
       results.push({ id: profile.id, status: `error: ${String(err)}` });

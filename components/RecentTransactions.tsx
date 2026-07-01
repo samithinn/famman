@@ -2,19 +2,7 @@
 
 import { Pencil, Trash2 } from "lucide-react";
 import { Transaction } from "@/lib/supabase";
-
-const CATEGORY_ICONS: Record<string, { icon: string; bg: string }> = {
-  "Food & Dining":  { icon: "🍜", bg: "#fff0f7" },
-  Groceries:        { icon: "🛒", bg: "#f5f3ff" },
-  Transportation:   { icon: "⛽", bg: "#f0fdf4" },
-  Utilities:        { icon: "💡", bg: "#fffbeb" },
-  Healthcare:       { icon: "💊", bg: "#eff6ff" },
-  Entertainment:    { icon: "🎬", bg: "#fff7ed" },
-  Shopping:         { icon: "🛍️", bg: "#f5f3ff" },
-  Education:        { icon: "📚", bg: "#f0fdf4" },
-  Travel:           { icon: "✈️", bg: "#eff6ff" },
-  Other:            { icon: "📦", bg: "#f9fafb" },
-};
+import { CATEGORY_ICONS } from "@/lib/category-icons";
 
 interface RecentTransactionsProps {
   transactions: Transaction[];

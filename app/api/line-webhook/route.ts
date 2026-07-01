@@ -1,7 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { buildDailySummary, buildMonthlySummary, pushToLine } from "@/lib/line-utils";
+import {
+  buildDailySummary,
+  buildMonthlySummary,
+  buildSummaryFlex,
+  buildTransactionListFlex,
+  fetchTransactionPage,
+  formatPeriodLabel,
+  pushToLine,
+  type SummaryPeriod,
+} from "@/lib/line-utils";
 
 type LineSource = { userId?: string; type: string };
 type LineMessage = { type: string; text?: string };
@@ -327,7 +336,34 @@ async function handleSummaryCommand(
     period === "daily"
       ? await buildDailySummary(supabase, profile.id)
       : await buildMonthlySummary(supabase, profile.id);
-  await pushToLine(lineUserId, summary);
+  await pushToLine(lineUserId, buildSummaryFlex(summary));
+}
+
+// "Deep Dive" — the "ดูรายละเอียด" buttons under รายรับ/รายจ่าย in the
+// summary Flex message, and the "ดูเพิ่มเติม" pagination button on the
+// resulting list, all route back here with an incrementing `page`.
+async function handleDeepDiveCommand(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  period: SummaryPeriod,
+  periodKey: string,
+  type: "income" | "expense",
+  page: number
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("line_user_id", lineUserId)
+    .single();
+
+  if (!profile) {
+    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    return;
+  }
+
+  const txnPage = await fetchTransactionPage(supabase, profile.id, period, periodKey, type, page);
+  const periodLabel = formatPeriodLabel(period, periodKey);
+  await pushToLine(lineUserId, buildTransactionListFlex(period, periodKey, periodLabel, type, txnPage));
 }
 
 // --- Guided "add rule" flow (triggered by the "เพิ่มกฎ" Rich Menu button) ---
@@ -469,7 +505,8 @@ async function handlePostback(
   lineUserId: string,
   data: string
 ): Promise<void> {
-  const action = new URLSearchParams(data).get("action");
+  const params = new URLSearchParams(data);
+  const action = params.get("action");
 
   switch (action) {
     case "daily_summary":
@@ -484,6 +521,21 @@ async function handlePostback(
     case "add_rule":
       await startAddRuleFlow(supabase, lineUserId);
       return;
+    case "view_daily_income":
+    case "view_daily_expense":
+    case "view_monthly_income":
+    case "view_monthly_expense": {
+      const period: "daily" | "monthly" = action.startsWith("view_daily") ? "daily" : "monthly";
+      const type: "income" | "expense" = action.endsWith("income") ? "income" : "expense";
+      const periodKey = params.get(period === "daily" ? "date" : "month");
+      const page = Math.max(Number(params.get("page") ?? "0") || 0, 0);
+      if (!periodKey) {
+        console.log(`[postback] missing ${period === "daily" ? "date" : "month"} param in data "${data}"`);
+        return;
+      }
+      await handleDeepDiveCommand(supabase, lineUserId, period, periodKey, type, page);
+      return;
+    }
     default:
       console.log(`[postback] unrecognized action in data "${data}"`);
   }
