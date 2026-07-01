@@ -993,10 +993,16 @@ async function handleShortcutRequest(
     authUser?.user?.email?.split("@")[0] ||
     null;
 
+  // Receipt-extraction mode leaves parsed.note as almost the entire slip
+  // (only the amount/date/time tokens are stripped) — keep just the
+  // recipient name instead, so edit/delete/show don't echo the whole slip.
+  const recipientName = extractRecipientName(text, spender);
+  const note = recipientName ?? parsed.note.slice(0, 60).trim();
+
   const date = new Date().toISOString();
   const { data: txData, error: txError } = await supabase
     .from("transactions")
-    .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id, type: parsed.type }])
+    .insert([{ date, amount: parsed.amount, category: parsed.category, note, spender, user_id: profile.id, type: parsed.type }])
     .select("id");
 
   if (txError) {
@@ -1013,7 +1019,6 @@ async function handleShortcutRequest(
   }
 
   const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, profile.line_last_response ?? null);
-  const recipientName = extractRecipientName(text, spender);
   const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, parsed.category === "Other");
   await pushToLine(lineUserId, reply);
 
