@@ -83,6 +83,11 @@ export default function SettingsView() {
   const [helpMessageSaved, setHelpMessageSaved] = useState(false);
   const [helpMessageError, setHelpMessageError] = useState("");
 
+  // Collapsible sections — default collapsed to save space
+  const [userMgmtOpen, setUserMgmtOpen] = useState(false);
+  const [personalityOpen, setPersonalityOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+
   useEffect(() => {
     fetchProfile();
     fetchCategories();
@@ -593,11 +598,22 @@ export default function SettingsView() {
 
         {/* Admin: User Management */}
         {userRole === "admin" && (
-          <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-            <h2 className="text-sm font-black mb-1" style={{ color: "#1f2937" }}>User Management</h2>
-            <p className="text-xs font-semibold mb-4" style={{ color: "#9ca3af" }}>
-              Manage roles for all accounts
-            </p>
+          <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+            <button onClick={() => setUserMgmtOpen(o => !o)} className="w-full flex items-center justify-between p-5 text-left">
+              <div>
+                <h2 className="text-sm font-black mb-1" style={{ color: "#1f2937" }}>User Management</h2>
+                <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+                  Manage roles for all accounts
+                </p>
+              </div>
+              <ChevronDown
+                size={16}
+                className="flex-shrink-0"
+                style={{ color: "#9ca3af", transform: userMgmtOpen ? "none" : "rotate(-90deg)", transition: "transform 0.15s" }}
+              />
+            </button>
+            {userMgmtOpen && (
+            <div className="px-5 pb-5">
 
             {usersError && (
               <p
@@ -670,19 +686,32 @@ export default function SettingsView() {
                 ))}
               </div>
             )}
+            </div>
+            )}
           </div>
         )}
 
         {/* Admin: LINE Bot Personality */}
         {userRole === "admin" && (
-          <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-            <div className="flex items-center gap-2 mb-1">
-              <MessageSquare size={15} style={{ color: "#06c755" }} />
-              <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>LINE Bot Personality</h2>
-            </div>
-            <p className="text-xs font-semibold mb-3" style={{ color: "#9ca3af" }}>
-              Sarcastic replies sent after each transaction. Category is matched against the transaction category (e.g. <code className="font-bold">coffee</code>, <code className="font-bold">food</code>). Use <code className="font-bold">general</code> as fallback.
-            </p>
+          <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+            <button onClick={() => setPersonalityOpen(o => !o)} className="w-full flex items-center justify-between p-5 text-left">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <MessageSquare size={15} style={{ color: "#06c755" }} />
+                  <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>LINE Bot Personality</h2>
+                </div>
+                <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+                  Sarcastic replies sent after each transaction. Category is matched against the transaction category (e.g. <code className="font-bold">coffee</code>, <code className="font-bold">food</code>). Use <code className="font-bold">general</code> as fallback.
+                </p>
+              </div>
+              <ChevronDown
+                size={16}
+                className="flex-shrink-0"
+                style={{ color: "#9ca3af", transform: personalityOpen ? "none" : "rotate(-90deg)", transition: "transform 0.15s" }}
+              />
+            </button>
+            {personalityOpen && (
+            <div className="px-5 pb-5">
 
             {/* Add form — single compact row */}
             <div className="flex gap-1.5 mb-3">
@@ -888,6 +917,8 @@ export default function SettingsView() {
                 );
               })()
             )}
+            </div>
+            )}
           </div>
         )}
 
@@ -1001,14 +1032,25 @@ export default function SettingsView() {
         {renderCategorySection("income", "Income Categories 💰", newIncomeCatName, setNewIncomeCatName, incomeCatOpen, () => setIncomeCatOpen(o => !o))}
 
         {/* Auto-Categorization Rules */}
-        <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-          <div className="flex items-center gap-2 mb-1">
-            <Zap size={15} style={{ color: "#f59e0b" }} />
-            <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Auto-Categorization Rules</h2>
-          </div>
-          <p className="text-xs font-semibold mb-3" style={{ color: "#9ca3af" }}>
-            When a receipt (OCR) or LINE chat message contains a keyword, the category is assigned automatically.
-          </p>
+        <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+          <button onClick={() => setRulesOpen(o => !o)} className="w-full flex items-center justify-between p-5 text-left">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Zap size={15} style={{ color: "#f59e0b" }} />
+                <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Auto-Categorization Rules</h2>
+              </div>
+              <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+                When a receipt (OCR) or LINE chat message contains a keyword, the category is assigned automatically.
+              </p>
+            </div>
+            <ChevronDown
+              size={16}
+              className="flex-shrink-0"
+              style={{ color: "#9ca3af", transform: rulesOpen ? "none" : "rotate(-90deg)", transition: "transform 0.15s" }}
+            />
+          </button>
+          {rulesOpen && (
+          <div className="px-5 pb-5">
 
           <div className="flex gap-1 mb-4 p-1 rounded-xl w-fit" style={{ background: "#f9fafb" }}>
             {(["ocr", "chat"] as RuleSourceType[]).map(tab => (
@@ -1102,6 +1144,8 @@ export default function SettingsView() {
                 </div>
               ))}
             </div>
+          )}
+          </div>
           )}
         </div>
 

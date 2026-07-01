@@ -520,15 +520,19 @@ function extractRecipientName(rawText: string, senderName: string | null): strin
   const isSender = (line: string) =>
     senderName ? line === senderName || line.includes(senderName) : false;
 
-  // Priority 3: Thai honorifics, excluding the sender
-  for (const line of lines) {
-    if (/^(นาย|นาง(?:สาว)?)\s*[฀-๿a-zA-Z]/.test(line) && !isSender(line)) return line;
-  }
+  // Priority 3: Thai honorifics. Standard slips list the sender (จาก) above
+  // the transfer arrow and the receiver (ไปยัง) below it, so the receiver is
+  // always the *second* honorific name on the slip, not the first. Preferring
+  // the last match (instead of the first non-sender match) keeps this correct
+  // even when isSender() can't exactly match the sender's OCR'd name.
+  const honorificLines = lines.filter(
+    (line) => /^(นาย|นาง(?:สาว)?)\s*[฀-๿a-zA-Z]/.test(line) && !isSender(line)
+  );
+  if (honorificLines.length > 0) return honorificLines[honorificLines.length - 1];
 
-  // Priority 4: company / partnership
-  for (const line of lines) {
-    if (/^(บริษัท|ห้างหุ้นส่วน)/.test(line)) return line;
-  }
+  // Priority 4: company / partnership — same "second one is the receiver" rule
+  const companyLines = lines.filter((line) => /^(บริษัท|ห้างหุ้นส่วน)/.test(line));
+  if (companyLines.length > 0) return companyLines[companyLines.length - 1];
 
   // Priority 5: ALL-CAPS English merchant name
   for (const line of lines) {
