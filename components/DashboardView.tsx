@@ -60,30 +60,44 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
     const d = new Date(iso);
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
-  const currentMonthTx = transactions.filter((t) => {
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+  const matchesSpender = useCallback(
+    (t: Transaction) =>
+      selectedSpender === "all" ? true : selectedSpender === "current" ? t.spender === currentUser : t.spender === selectedSpender,
+    [selectedSpender, currentUser]
+  );
+
+  // Budget progress always tracks the logged-in user's own monthly budget, regardless of the spender filter.
+  const ownMonthTx = transactions.filter((t) => {
     const td = localDate(t.date);
     return td >= start && td <= end && t.spender === currentUser;
   });
-  const currentMonthSpent = currentMonthTx
+  const ownMonthSpent = ownMonthTx
     .filter((t) => (t.type ?? "expense") === "expense")
     .reduce((s, t) => s + t.amount, 0);
 
-  const currentMonthIncome = currentMonthTx.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
-  const currentBalance = currentMonthIncome - currentMonthSpent;
+  const budgetPct = monthlyBudget > 0 ? Math.min((ownMonthSpent / monthlyBudget) * 100, 100) : 0;
+  const overBudget = monthlyBudget > 0 && ownMonthSpent > monthlyBudget;
 
-  const budgetPct = monthlyBudget > 0 ? Math.min((currentMonthSpent / monthlyBudget) * 100, 100) : 0;
-  const overBudget = monthlyBudget > 0 && currentMonthSpent > monthlyBudget;
+  // Balance boxes track whichever spender is selected in the filter.
+  const filteredMonthTx = transactions.filter((t) => {
+    const td = localDate(t.date);
+    return td >= start && td <= end && matchesSpender(t);
+  });
+  const monthSpent = filteredMonthTx.filter((t) => (t.type ?? "expense") === "expense").reduce((s, t) => s + t.amount, 0);
+  const monthIncome = filteredMonthTx.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const monthBalance = monthIncome - monthSpent;
+
+  const filteredTodayTx = transactions.filter((t) => localDate(t.date) === todayStr && matchesSpender(t));
+  const todaySpent = filteredTodayTx.filter((t) => (t.type ?? "expense") === "expense").reduce((s, t) => s + t.amount, 0);
+  const todayIncome = filteredTodayTx.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const todayBalance = todayIncome - todaySpent;
 
   const uniqueSpenders = Array.from(new Set(transactions.map((t) => t.spender)))
     .filter((spender) => spender !== currentUser)
     .sort();
-  const recentTransactions = transactions.filter((t) =>
-    selectedSpender === "all"
-      ? true
-      : selectedSpender === "current"
-      ? t.spender === currentUser
-      : t.spender === selectedSpender
-  );
+  const recentTransactions = transactions.filter(matchesSpender);
 
   return (
     <div className="flex flex-col h-full">
@@ -133,7 +147,23 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
           </div>
         )}
 
-        {/* Current Balance */}
+        {/* Today's Balance */}
+        <div
+          className="rounded-2xl p-6"
+          style={{ background: "linear-gradient(135deg, #8b5cf6, #6366f1)", boxShadow: "0 4px 16px rgba(139,92,246,0.3)" }}
+        >
+          <p className="text-xs font-extrabold mb-2" style={{ color: "rgba(255,255,255,0.7)", letterSpacing: "0.8px" }}>
+            TODAY&apos;S BALANCE
+          </p>
+          <p className="text-3xl font-black text-white" style={{ letterSpacing: "-1px" }}>
+            ฿{todayBalance.toFixed(2)}
+          </p>
+          <p className="text-xs font-semibold mt-1" style={{ color: "rgba(255,255,255,0.75)" }}>
+            ฿{todayIncome.toFixed(2)} income − ฿{todaySpent.toFixed(2)} expenses (today)
+          </p>
+        </div>
+
+        {/* This Month's Balance */}
         <div
           className="rounded-2xl p-6"
           style={{ background: "linear-gradient(135deg, #ec4899, #8b5cf6)", boxShadow: "0 4px 16px rgba(236,72,153,0.3)" }}
@@ -142,10 +172,10 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
             THIS MONTH&apos;S BALANCE
           </p>
           <p className="text-3xl font-black text-white" style={{ letterSpacing: "-1px" }}>
-            ฿{currentBalance.toFixed(2)}
+            ฿{monthBalance.toFixed(2)}
           </p>
           <p className="text-xs font-semibold mt-1" style={{ color: "rgba(255,255,255,0.75)" }}>
-            ฿{currentMonthIncome.toFixed(2)} income − ฿{currentMonthSpent.toFixed(2)} expenses (this month)
+            ฿{monthIncome.toFixed(2)} income − ฿{monthSpent.toFixed(2)} expenses (this month)
           </p>
         </div>
 
@@ -154,7 +184,7 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Budget Progress</h2>
             <span className="text-xs font-extrabold" style={{ color: overBudget ? "#ef4444" : "#9ca3af" }}>
-              {monthlyBudget > 0 ? `฿${currentMonthSpent.toFixed(2)} / ฿${monthlyBudget.toLocaleString()}` : "No budget set"}
+              {monthlyBudget > 0 ? `฿${ownMonthSpent.toFixed(2)} / ฿${monthlyBudget.toLocaleString()}` : "No budget set"}
             </span>
           </div>
           {monthlyBudget > 0 ? (
@@ -170,8 +200,8 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
               </div>
               <p className="text-xs font-semibold mt-2" style={{ color: overBudget ? "#ef4444" : "#9ca3af" }}>
                 {overBudget
-                  ? `฿${(currentMonthSpent - monthlyBudget).toFixed(2)} over budget`
-                  : `฿${(monthlyBudget - currentMonthSpent).toFixed(2)} left this month`}
+                  ? `฿${(ownMonthSpent - monthlyBudget).toFixed(2)} over budget`
+                  : `฿${(monthlyBudget - ownMonthSpent).toFixed(2)} left this month`}
               </p>
             </>
           ) : (

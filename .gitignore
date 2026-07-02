@@ -43,3 +43,5 @@ next-env.d.ts
 
 # Google Cloud Vision service account credentials — never commit
 google-credentials.json
+
+.vercel
