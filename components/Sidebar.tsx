@@ -15,7 +15,7 @@ interface SidebarProps {
 const navItems: { label: string; view: View; icon: string }[] = [
   { label: "Dashboard",       view: "dashboard",    icon: "📊" },
   { label: "Transactions",    view: "transactions", icon: "💳" },
-  { label: "Monthly Report",  view: "report",       icon: "📅" },
+  { label: "Report",         view: "report",       icon: "📅" },
   { label: "Settings",        view: "settings",     icon: "⚙️" },
 ];
 
