@@ -88,6 +88,7 @@ export default function SettingsView() {
   const [userMgmtOpen, setUserMgmtOpen] = useState(false);
   const [personalityOpen, setPersonalityOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [helpMessageOpen, setHelpMessageOpen] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -956,51 +957,64 @@ export default function SettingsView() {
 
         {/* Admin: Bot Help Message */}
         {userRole === "admin" && (
-          <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-            <div className="flex items-center gap-2 mb-1">
-              <MessageSquare size={15} style={{ color: "#06c755" }} />
-              <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Bot Help Message</h2>
+          <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+            <button onClick={() => setHelpMessageOpen(o => !o)} className="w-full flex items-center justify-between p-5 text-left">
+              <div className="flex items-center gap-2">
+                <MessageSquare size={15} style={{ color: "#06c755" }} />
+                <div>
+                  <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Bot Help Message</h2>
+                  <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>
+                    Sent when a user types <code className="font-bold">help</code> or <code className="font-bold">ช่วยด้วย</code>
+                  </p>
+                </div>
+              </div>
+              <ChevronDown
+                size={16}
+                className="flex-shrink-0"
+                style={{ color: "#9ca3af", transform: helpMessageOpen ? "none" : "rotate(-90deg)", transition: "transform 0.15s" }}
+              />
+            </button>
+
+            {helpMessageOpen && (
+            <div className="px-5 pb-5">
+              {helpMessageError && (
+                <p className="text-xs font-semibold px-3 py-2 rounded-xl mb-3" style={{ background: "#fef2f2", color: "#ef4444" }}>
+                  {helpMessageError}
+                </p>
+              )}
+
+              {helpMessageLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 size={20} className="animate-spin" style={{ color: "#a78bfa" }} />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <textarea
+                    value={helpMessage}
+                    onChange={e => setHelpMessage(e.target.value)}
+                    rows={10}
+                    className="w-full rounded-xl px-3 py-2.5 text-xs font-semibold outline-none resize-y"
+                    style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+                  />
+                  <button
+                    onClick={saveHelpMessage}
+                    disabled={helpMessageSaving || !helpMessage.trim()}
+                    className="w-full py-2.5 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
+                    style={{
+                      background: helpMessageSaved
+                        ? "linear-gradient(135deg, #10b981, #059669)"
+                        : "linear-gradient(135deg, #06c755, #00b248)",
+                      opacity: helpMessageSaving || !helpMessage.trim() ? 0.6 : 1,
+                    }}
+                  >
+                    {helpMessageSaving
+                      ? <Loader2 size={14} className="animate-spin" />
+                      : helpMessageSaved ? "Saved ✓" : "Save"
+                    }
+                  </button>
+                </div>
+              )}
             </div>
-            <p className="text-xs font-semibold mb-3" style={{ color: "#9ca3af" }}>
-              Sent when a user types <code className="font-bold">help</code> or <code className="font-bold">ช่วยด้วย</code> to the LINE bot.
-            </p>
-
-            {helpMessageError && (
-              <p className="text-xs font-semibold px-3 py-2 rounded-xl mb-3" style={{ background: "#fef2f2", color: "#ef4444" }}>
-                {helpMessageError}
-              </p>
-            )}
-
-            {helpMessageLoading ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 size={20} className="animate-spin" style={{ color: "#a78bfa" }} />
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <textarea
-                  value={helpMessage}
-                  onChange={e => setHelpMessage(e.target.value)}
-                  rows={10}
-                  className="w-full rounded-xl px-3 py-2.5 text-xs font-semibold outline-none resize-y"
-                  style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
-                />
-                <button
-                  onClick={saveHelpMessage}
-                  disabled={helpMessageSaving || !helpMessage.trim()}
-                  className="w-full py-2.5 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
-                  style={{
-                    background: helpMessageSaved
-                      ? "linear-gradient(135deg, #10b981, #059669)"
-                      : "linear-gradient(135deg, #06c755, #00b248)",
-                    opacity: helpMessageSaving || !helpMessage.trim() ? 0.6 : 1,
-                  }}
-                >
-                  {helpMessageSaving
-                    ? <Loader2 size={14} className="animate-spin" />
-                    : helpMessageSaved ? "Saved ✓" : "Save"
-                  }
-                </button>
-              </div>
             )}
           </div>
         )}
