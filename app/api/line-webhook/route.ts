@@ -81,23 +81,38 @@ async function replyToLine(replyToken: string, text: string): Promise<void> {
 
 function parseTransaction(
   text: string,
-  categories: string[]
+  categories: string[],
+  mode: "chat" | "ocr" = "chat"
 ): { amount: number; category: string; note: string; type: "expense" | "income" } | null {
   const trimmed = text.trim();
   const isIncome = trimmed.startsWith("+");
   const raw = isIncome ? trimmed.slice(1).trim() : trimmed;
   const type: "expense" | "income" = isIncome ? "income" : "expense";
 
-  // Fast path: original format "<number> [category] [note]"
-  const parts = raw.split(/\s+/);
-  const firstNum = Number(parts[0]);
-  if (isFinite(firstNum) && firstNum > 0) {
-    if (parts.length === 1) return { amount: firstNum, category: "Other", note: "", type };
-    const maybeCategory = parts[1];
-    const matched = categories.find(c => c.toLowerCase() === maybeCategory.toLowerCase());
-    return matched
-      ? { amount: firstNum, category: matched, note: parts.slice(2).join(" "), type }
-      : { amount: firstNum, category: "Other", note: parts.slice(1).join(" "), type };
+  // Chat shorthand: "<amount> <category/keyword> <note>" typed manually, in
+  // any order and any capitalization — whichever token is a bare number is
+  // the amount, a token matching a known category name is the category
+  // (category_rules keywords are applied afterwards by applyCategoryRules),
+  // and every other token is the note. Skipped for multi-line/date-looking
+  // text so a pasted receipt still falls through to the OCR extraction
+  // below instead of getting tokenized into a garbage note.
+  const looksLikeReceiptBlob = /[\n\r]/.test(raw) || /\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{1,4}/.test(raw) || /\d{1,2}:\d{2}/.test(raw);
+  if (mode === "chat" && !looksLikeReceiptBlob) {
+    const parts = raw.split(/\s+/).filter(Boolean);
+    const amountIndex = parts.findIndex(p => isFinite(Number(p)) && Number(p) > 0);
+
+    if (amountIndex !== -1) {
+      const amount = Number(parts[amountIndex]);
+      const remaining = parts.filter((_, i) => i !== amountIndex);
+
+      const categoryIndex = remaining.findIndex(p => categories.some(c => c.toLowerCase() === p.toLowerCase()));
+      if (categoryIndex === -1) {
+        return { amount, category: "Other", note: remaining.join(" "), type };
+      }
+      const category = categories.find(c => c.toLowerCase() === remaining[categoryIndex].toLowerCase())!;
+      const note = remaining.filter((_, i) => i !== categoryIndex).join(" ");
+      return { amount, category, note, type };
+    }
   }
 
   // Receipt extraction mode: handle free-form text like "10:00 30/06/2026 ข้าวราดแกง 50 บาท"
@@ -308,11 +323,11 @@ async function pickPersonalityResponse(
 }
 
 const FORMAT_ERROR_MESSAGES = [
-  "พิมพ์อะไรมาเนี่ยยย อ่านไม่ออกโว้ย! 😅 พิมพ์ยอดเงินขึ้นมาก่อนสิเจ้านาย เช่น '500 food' เอาใหม่ๆ!",
-  "โอ๊ยยย บอทสับสน! 😵‍💫 จะให้บันทึกกี่บาทก็พิมพ์ตัวเลขมานำหน้าก่อนเลยครับพี่! ลองพิมพ์ใหม่นะ เช่น '50 กาแฟ'",
-  "เห้ยๆ พิมพ์ผิดป่าว! บอทรับได้แค่ [ตัวเลข] ตามด้วย [หมวดหมู่/โน้ต] นะจ๊ะ 😤 เช่น '120 food' เข้าใจมะ? ลองใหม่!",
-  "อ่านไม่ออกจ้าาา ภาษามนุษย์ต่างดาวปะเนี่ย? 👽 พิมพ์ยอดเงินเป็นตัวเลขมาก่อนเลย! เช่น '300 fuel'",
-  "ใจเย็นๆ ลูกพี่! ค่อยๆ พิมพ์นะ... เอา 'ตัวเลข' ขึ้นก่อน แล้วเว้นวรรคตามด้วย 'คำอธิบาย' นะครับ เช่น '200 ช้อปปิ้ง' ลองใหม่นะจ๊ะ!",
+  "พิมพ์อะไรมาเนี่ยยย อ่านไม่ออกโว้ย! 😅 ต้องมีตัวเลขกับหมวดหมู่นะเจ้านาย จะพิมพ์อันไหนก่อนก็ได้ เช่น '500 food' หรือ 'food 500' เอาใหม่ๆ!",
+  "โอ๊ยยย บอทสับสน! 😵‍💫 ขอแค่มีตัวเลขกับหมวดหมู่ครบ สลับที่กันยังไงก็อ่านออกครับพี่! ลองพิมพ์ใหม่นะ เช่น '50 กาแฟ' หรือ 'กาแฟ 50'",
+  "เห้ยๆ พิมพ์ผิดป่าว! บอทรับ [ตัวเลข] กับ [หมวดหมู่/โน้ต] สลับที่กันได้หมดนะจ๊ะ 😤 เช่น '120 food' หรือ 'food 120' เข้าใจมะ? ลองใหม่!",
+  "อ่านไม่ออกจ้าาา ภาษามนุษย์ต่างดาวปะเนี่ย? 👽 พิมพ์ตัวเลขยอดเงินกับหมวดหมู่มาด้วยกันก่อน จะเรียงยังไงก็ได้! เช่น '300 fuel' หรือ 'fuel 300'",
+  "ใจเย็นๆ ลูกพี่! ค่อยๆ พิมพ์นะ... แค่มี 'ตัวเลข' กับ 'หมวดหมู่' ครบ สลับที่กันก็ไม่เป็นไรครับ เช่น '200 ช้อปปิ้ง' หรือ 'ช้อปปิ้ง 200' ลองใหม่นะจ๊ะ!",
 ];
 
 function randomFormatError(): string {
@@ -323,10 +338,10 @@ const HELP_MESSAGE_FALLBACK = [
   "📖 คำสั่งที่ใช้ได้ทั้งหมด",
   "━━━━━━━━━━━━━",
   "💸 บันทึกรายจ่าย:",
-  "[จำนวน] [รายการ] (เช่น 20 ข้าว)",
+  "[จำนวน] [หมวดหมู่/คำค้น] สลับที่กันได้ (เช่น 20 กาแฟ หรือ กาแฟ 20)",
   "",
   "✏️ แก้ไขยอด/หมวดหมู่ของรายการล่าสุด:",
-  "edit [จำนวน] [หมวดหมู่] เช่น edit 150 food",
+  "edit [จำนวน] [หมวดหมู่] สลับที่กันได้ เช่น edit 150 food หรือ edit food 150",
   "หรือพิมพ์ edit เฉยๆ บอทจะถามว่าต้องการแก้ไขเป็นอะไร",
   "",
   "📝 เพิ่ม/แก้ไข Note ของรายการล่าสุด:",
@@ -1247,7 +1262,7 @@ async function handleShortcutRequest(
     .eq("user_id", profile.id);
   const categoryNames = (cats ?? []).map((c: { name: string }) => c.name);
 
-  const parsed = parseTransaction(text, categoryNames);
+  const parsed = parseTransaction(text, categoryNames, "ocr");
   if (!parsed) {
     console.log("[shortcut] parseTransaction failed. rawText:", JSON.stringify(text));
     await pushToLine(lineUserId, randomFormatError());
@@ -1343,7 +1358,7 @@ async function handleSlipImage(
     .eq("user_id", profile.id);
   const categoryNames = (cats ?? []).map((c: { name: string }) => c.name);
 
-  const parsed = parseTransaction(text, categoryNames);
+  const parsed = parseTransaction(text, categoryNames, "ocr");
   if (!parsed) {
     console.log("[slip-ocr] parseTransaction failed. OCR text:", JSON.stringify(text));
     await pushToLine(lineUserId, randomFormatError());
@@ -1668,7 +1683,7 @@ export async function POST(req: NextRequest) {
         console.log("[edit-flow] failed to save pending state:", error.message);
         await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
       } else {
-        await pushToLine(lineUserId, `รายการล่าสุด: ${txnLabel}\n\nต้องการแก้ไขยอดเงิน หรือ หมวดหมู่ไหมครับ? (เช่น 150 food restaurant)\n\nพิมพ์ cc เพื่อยกเลิก`);
+        await pushToLine(lineUserId, `รายการล่าสุด: ${txnLabel}\n\nต้องการแก้ไขยอดเงิน หรือ หมวดหมู่ไหมครับ? สลับที่กันได้ (เช่น 150 food restaurant หรือ food 150 restaurant)\n\nพิมพ์ cc เพื่อยกเลิก`);
       }
       continue;
     }
