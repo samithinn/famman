@@ -164,7 +164,7 @@ export default function ProfilePage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>
-                FULL NAME
+                WHAT SHOULD WE CALL YOU?
               </label>
               <input
                 type="text"
