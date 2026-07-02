@@ -67,11 +67,11 @@ function exportCSV(transactions: Transaction[], monthValue: string) {
   URL.revokeObjectURL(url);
 }
 
-interface MonthlyReportProps {
+interface ReportProps {
   newTransaction: Transaction | null;
 }
 
-export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
+export default function Report({ newTransaction }: ReportProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

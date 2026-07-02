@@ -6,7 +6,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Sidebar, { View } from "@/components/Sidebar";
 import DashboardView from "@/components/DashboardView";
-import MonthlyReport from "@/components/MonthlyReport";
+import Report from "@/components/Report";
 import TransactionsView from "@/components/TransactionsView";
 import AddTransactionModal from "@/components/AddTransactionModal";
 import { Transaction } from "@/lib/supabase";
@@ -43,7 +43,7 @@ function HomeContent() {
       case "dashboard":
         return <DashboardView newTransaction={lastAdded} onAddTransaction={() => setShowModal(true)} />;
       case "report":
-        return <MonthlyReport newTransaction={lastAdded} />;
+        return <Report newTransaction={lastAdded} />;
       case "transactions":
         return <TransactionsView newTransaction={lastAdded} onAddTransaction={() => setShowModal(true)} />;
       case "settings":
