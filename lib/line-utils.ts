@@ -9,6 +9,32 @@ const THAI_MONTHS = [
 
 const PAGE_SIZE = 10;
 
+// Pastel palette shared by every Flex bubble — keeps the "cute" look
+// consistent across summary, deep-dive list, and recent-transactions cards.
+const PASTEL = {
+  income: "#1FD991", // bright pastel mint
+  expense: "#FF5C93", // bright bubblegum pink
+  warn: "#FFC02E", // bright pastel amber
+  textLabel: "#8B7BB8", // soft periwinkle-gray
+  textMuted: "#B6A8DB", // light lavender-gray
+  textBody: "#4A3E73", // deep violet-ink
+  track: "#FFDCEE", // bright pastel pink progress-bar track
+  separator: "#FFD1E8", // bright pink divider
+  accent: "#8B5CF6", // vivid pastel purple (primary buttons)
+  headerTint: "#FFEAF6", // bright tint for header subtitle text
+  pillBg: "#EAE0FF", // bright lavender pill background for secondary buttons
+} as const;
+
+// Bright pink → vivid purple gradient used on the two "hero" headers
+// (summary + recent-transactions). Income/expense deep-dive headers stay
+// solid pastel so their color still signals the transaction type.
+const HERO_GRADIENT = {
+  type: "linearGradient",
+  angle: "135deg",
+  startColor: "#FF6FB7",
+  endColor: "#8B5CF6",
+} as const;
+
 function fmt(n: number): string {
   return `฿${Math.round(n).toLocaleString()}`;
 }
@@ -256,7 +282,7 @@ function amountRow(label: string, value: string, color: string): FlexComponent {
     type: "box",
     layout: "horizontal",
     contents: [
-      { type: "text", text: label, size: "sm", color: "#666666", flex: 3 },
+      { type: "text", text: label, size: "sm", color: PASTEL.textLabel, flex: 3 },
       { type: "text", text: value, size: "sm", weight: "bold", align: "end", color, flex: 2 },
     ],
   };
@@ -267,6 +293,7 @@ function viewDetailsButton(period: SummaryPeriod, type: "income" | "expense", pe
     type: "button",
     style: "link",
     height: "sm",
+    color: type === "income" ? PASTEL.income : PASTEL.expense,
     action: {
       type: "postback",
       label: "ดูรายละเอียด",
@@ -282,8 +309,8 @@ function categoryRow(item: CategoryAmount): FlexComponent {
     layout: "horizontal",
     margin: "sm",
     contents: [
-      { type: "text", text: `${categoryIcon(item.category)} ${item.category}`, size: "xs", color: "#555555", flex: 3 },
-      { type: "text", text: fmt(item.amount), size: "xs", color: "#333333", align: "end", flex: 2 },
+      { type: "text", text: `${categoryIcon(item.category)} ${item.category}`, size: "xs", color: PASTEL.textLabel, flex: 3 },
+      { type: "text", text: fmt(item.amount), size: "xs", color: PASTEL.textBody, align: "end", flex: 2 },
     ],
   };
 }
@@ -303,23 +330,23 @@ export function buildSummaryFlex(data: SummaryData, preferences?: SummaryBlock[]
 
   if (show("income")) {
     body.push(
-      amountRow("💰 รายรับ", fmt(data.income), "#16A34A"),
+      amountRow("💰 รายรับ", fmt(data.income), PASTEL.income),
       { type: "box", layout: "vertical", margin: "xs", contents: [viewDetailsButton(data.period, "income", data.periodKey)] },
     );
   }
   if (show("expense")) {
-    if (show("income")) body.push({ type: "separator", margin: "md" });
+    if (show("income")) body.push({ type: "separator", margin: "md", color: PASTEL.separator });
     body.push(
-      amountRow("💸 รายจ่าย", fmt(data.expenses), "#DC2626"),
+      amountRow("💸 รายจ่าย", fmt(data.expenses), PASTEL.expense),
       { type: "box", layout: "vertical", margin: "xs", contents: [viewDetailsButton(data.period, "expense", data.periodKey)] },
     );
   }
-  if (show("income") || show("expense")) body.push({ type: "separator", margin: "md" });
-  body.push(amountRow("คงเหลือ", `${data.net >= 0 ? "+" : ""}${fmt(data.net)}`, data.net >= 0 ? "#16A34A" : "#DC2626"));
+  if (show("income") || show("expense")) body.push({ type: "separator", margin: "md", color: PASTEL.separator });
+  body.push(amountRow("คงเหลือ", `${data.net >= 0 ? "+" : ""}${fmt(data.net)}`, data.net >= 0 ? PASTEL.income : PASTEL.expense));
 
   if (show("category_breakdown") && data.categoryBreakdown.length > 0) {
-    body.push({ type: "separator", margin: "lg" });
-    body.push({ type: "text", text: "แยกตามหมวดหมู่", size: "xs", color: "#999999", weight: "bold", margin: "lg" });
+    body.push({ type: "separator", margin: "lg", color: PASTEL.separator });
+    body.push({ type: "text", text: "แยกตามหมวดหมู่", size: "xs", color: PASTEL.textMuted, weight: "bold", margin: "lg" });
     const top = data.categoryBreakdown.slice(0, 5);
     const rest = data.categoryBreakdown.slice(5);
     for (const item of top) body.push(categoryRow(item));
@@ -332,15 +359,15 @@ export function buildSummaryFlex(data: SummaryData, preferences?: SummaryBlock[]
   if (show("budget") && data.budget && data.budget > 0) {
     const pct = data.pct ?? 0;
     const overBudget = pct >= 100;
-    const barColor = overBudget ? "#DC2626" : pct >= 80 ? "#F59E0B" : "#16A34A";
-    body.push({ type: "separator", margin: "lg" });
-    body.push(amountRow("🎯 งบเดือนนี้", fmt(data.budget), "#333333"));
+    const barColor = overBudget ? PASTEL.expense : pct >= 80 ? PASTEL.warn : PASTEL.income;
+    body.push({ type: "separator", margin: "lg", color: PASTEL.separator });
+    body.push(amountRow("🎯 งบเดือนนี้", fmt(data.budget), PASTEL.textBody));
     body.push({
       type: "box",
       layout: "vertical",
       margin: "sm",
       height: "8px",
-      backgroundColor: "#E5E7EB",
+      backgroundColor: PASTEL.track,
       cornerRadius: "4px",
       contents: [
         {
@@ -373,10 +400,10 @@ export function buildSummaryFlex(data: SummaryData, preferences?: SummaryBlock[]
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#3B82F6",
+      background: HERO_GRADIENT,
       paddingAll: "20px",
       contents: [
-        { type: "text", text: `${emoji} ${title}`, size: "sm", color: "#DBEAFE" },
+        { type: "text", text: `${emoji} ${title}`, size: "sm", color: PASTEL.headerTint },
         { type: "text", text: data.periodLabel, size: "xl", weight: "bold", color: "#FFFFFF", margin: "sm" },
       ],
     },
@@ -398,7 +425,7 @@ export function buildSummaryFlex(data: SummaryData, preferences?: SummaryBlock[]
         {
           type: "button",
           style: "primary",
-          color: "#3B82F6",
+          color: PASTEL.accent,
           action: { type: "uri", label: "เปิดเว็บแดชบอร์ด", uri: `${dashboardUrl.replace(/\/$/, "")}/dashboard` },
         },
       ],
@@ -419,16 +446,16 @@ export function buildTransactionListFlex(
   txnPage: TransactionPage
 ): LineMessagePayload {
   const typeLabel = type === "income" ? "รายรับ" : "รายจ่าย";
-  const color = type === "income" ? "#16A34A" : "#DC2626";
+  const color = type === "income" ? PASTEL.income : PASTEL.expense;
   const altText = `${typeLabel}${period === "daily" ? "วันนี้" : "เดือนนี้"}: ${periodLabel}`;
 
   const body: FlexComponent[] = [];
 
   if (txnPage.items.length === 0) {
-    body.push({ type: "text", text: `ไม่มีรายการ${typeLabel}`, size: "sm", color: "#999999", align: "center" });
+    body.push({ type: "text", text: `ไม่มีรายการ${typeLabel}`, size: "sm", color: PASTEL.textMuted, align: "center" });
   } else {
     txnPage.items.forEach((item, i) => {
-      if (i > 0) body.push({ type: "separator", margin: "md" });
+      if (i > 0) body.push({ type: "separator", margin: "md", color: PASTEL.separator });
       body.push({
         type: "box",
         layout: "horizontal",
@@ -438,7 +465,7 @@ export function buildTransactionListFlex(
             type: "text",
             text: `${categoryIcon(item.category)} ${item.category}${item.note ? ` (${item.note})` : ""}`,
             size: "sm",
-            color: "#555555",
+            color: PASTEL.textLabel,
             flex: 3,
             wrap: true,
           },
@@ -449,12 +476,12 @@ export function buildTransactionListFlex(
 
     const from = txnPage.page * PAGE_SIZE + 1;
     const to = Math.min(from + txnPage.items.length - 1, txnPage.total);
-    body.push({ type: "separator", margin: "lg" });
+    body.push({ type: "separator", margin: "lg", color: PASTEL.separator });
     body.push({
       type: "text",
       text: `แสดง ${from}-${to} จาก ${txnPage.total} รายการ`,
       size: "xs",
-      color: "#999999",
+      color: PASTEL.textMuted,
       margin: "lg",
       align: "center",
     });
@@ -466,6 +493,7 @@ export function buildTransactionListFlex(
     footerButtons.push({
       type: "button",
       style: "secondary",
+      color: PASTEL.pillBg,
       action: {
         type: "postback",
         label: "ดูเพิ่มเติม",
@@ -481,6 +509,7 @@ export function buildTransactionListFlex(
   footerButtons.push({
     type: "button",
     style: hasMore ? "link" : "secondary",
+    color: hasMore ? PASTEL.accent : PASTEL.pillBg,
     action: {
       type: "postback",
       label: "ย้อนกลับไปเมนูหลัก",
@@ -535,8 +564,8 @@ export function buildRecentTransactionsFlex(items: RecentTransactionItem[]): Lin
 
   const body: FlexComponent[] = [];
   items.forEach((item, i) => {
-    if (i > 0) body.push({ type: "separator", margin: "md" });
-    const color = item.type === "income" ? "#16A34A" : "#DC2626";
+    if (i > 0) body.push({ type: "separator", margin: "md", color: PASTEL.separator });
+    const color = item.type === "income" ? PASTEL.income : PASTEL.expense;
     const sign = item.type === "income" ? "+" : "-";
     const category = item.category || "Other";
     body.push({
@@ -553,10 +582,10 @@ export function buildRecentTransactionsFlex(items: RecentTransactionItem[]): Lin
               type: "text",
               text: `${categoryIcon(category)} ${category}${item.note ? ` (${item.note})` : ""}`,
               size: "sm",
-              color: "#555555",
+              color: PASTEL.textLabel,
               wrap: true,
             },
-            { type: "text", text: formatDMY(item.date), size: "xs", color: "#999999", margin: "xs" },
+            { type: "text", text: formatDMY(item.date), size: "xs", color: PASTEL.textMuted, margin: "xs" },
           ],
         },
         {
@@ -578,7 +607,7 @@ export function buildRecentTransactionsFlex(items: RecentTransactionItem[]): Lin
     header: {
       type: "box",
       layout: "vertical",
-      backgroundColor: "#3B82F6",
+      background: HERO_GRADIENT,
       paddingAll: "20px",
       contents: [{ type: "text", text: "🧾 รายการล่าสุด", size: "xl", weight: "bold", color: "#FFFFFF" }],
     },
@@ -600,7 +629,7 @@ export function buildRecentTransactionsFlex(items: RecentTransactionItem[]): Lin
         {
           type: "button",
           style: "primary",
-          color: "#3B82F6",
+          color: PASTEL.accent,
           action: { type: "uri", label: "เปิดเว็บแดชบอร์ด", uri: `${dashboardUrl.replace(/\/$/, "")}/dashboard` },
         },
       ],
