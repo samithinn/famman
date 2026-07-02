@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   line_pending_action text,
   line_pending_data jsonb,
   line_last_transaction_id bigint,
+  line_last_deleted jsonb,
   daily_summary_time text DEFAULT '22:00',
   summary_preferences jsonb DEFAULT '["income", "expense", "category_breakdown", "budget"]'::jsonb,
   updated_at timestamptz DEFAULT now()
@@ -59,6 +60,11 @@ ALTER TABLE profiles ALTER COLUMN line_last_transaction_id TYPE bigint USING NUL
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS daily_summary_time text DEFAULT '22:00';
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS summary_preferences jsonb
   DEFAULT '["income", "expense", "category_breakdown", "budget"]'::jsonb;
+
+-- Snapshot of the last transaction removed via LINE "delete", so "undo" can
+-- restore it (added for existing installs; the CREATE TABLE above only
+-- applies to a brand-new table).
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_last_deleted jsonb;
 
 -- Backfill: existing rows predate the column default above and would
 -- otherwise be NULL (i.e. silently stop receiving the push they already

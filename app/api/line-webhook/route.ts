@@ -305,11 +305,17 @@ const HELP_MESSAGE_FALLBACK = [
   "💸 บันทึกรายจ่าย:",
   "[จำนวน] [รายการ] (เช่น 20 ข้าว)",
   "",
-  "✏️ แก้ไขรายการล่าสุด:",
-  "edit (บอทจะถามว่าต้องการแก้ไขเป็นอะไร)",
+  "✏️ แก้ไขยอด/หมวดหมู่ของรายการล่าสุด:",
+  "edit [จำนวน] [หมวดหมู่] เช่น edit 150 food",
+  "หรือพิมพ์ edit เฉยๆ บอทจะถามว่าต้องการแก้ไขเป็นอะไร",
   "",
-  "🗑️ ลบรายการล่าสุด:",
+  "📝 เพิ่ม/แก้ไข Note ของรายการล่าสุด:",
+  "note [ข้อความ] เช่น note กินข้าวกับเพื่อน",
+  "",
+  "🗑️ ลบรายการล่าสุด (ลบทันที ไม่ถาม):",
   "delete หรือ ลบ",
+  "↩️ กู้คืนรายการที่เพิ่งลบ:",
+  "undo หรือ กู้คืน",
   "",
   "🧾 ดูรายการล่าสุด 5 รายการ:",
   "show หรือ แสดง",
@@ -740,7 +746,7 @@ async function startAddRuleFlow(
   );
 }
 
-// Step 1 of edit flow: parse amount and category, then move to note step
+// Bare "edit" flow: waits for the next message, then applies it
 async function continueEditTransactionFlow(
   supabase: ReturnType<typeof serviceClient>,
   lineUserId: string,
@@ -756,9 +762,21 @@ async function continueEditTransactionFlow(
     return;
   }
 
+  await applyEditToLastTransaction(supabase, lineUserId, profileId, text);
+}
+
+// Parses new amount/category (and optional trailing note) and applies it to
+// the last transaction immediately. Shared by the bare "edit" flow above and
+// the one-shot "edit <amount> <category> [note]" trigger.
+async function applyEditToLastTransaction(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  profileId: string,
+  text: string
+): Promise<void> {
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, line_last_transaction_id")
+    .select("id, line_last_transaction_id, line_last_response")
     .eq("id", profileId)
     .single();
 
@@ -777,35 +795,47 @@ async function continueEditTransactionFlow(
     .eq("user_id", profileId);
   const categoryNames = (cats ?? []).map((c: { name: string }) => c.name);
 
-  // Parse amount and category (note will be captured in next step)
   const editParsed = parseTransaction(text, categoryNames);
   if (!editParsed) {
     await pushToLine(lineUserId, randomFormatError());
     return;
   }
 
-  // Apply category rules
   await applyCategoryRules(supabase, profileId, text, editParsed, "chat");
 
-  // Store parsed transaction data and move to note-edit step
+  // Trailing text after amount+category (if any) also updates the note;
+  // otherwise the existing note is left untouched.
+  const hasNote = editParsed.note.trim().length > 0;
+  const { error: updateError } = await supabase
+    .from("transactions")
+    .update({
+      amount: editParsed.amount,
+      category: editParsed.category,
+      type: editParsed.type,
+      ...(hasNote ? { note: editParsed.note } : {}),
+    })
+    .eq("id", profile.line_last_transaction_id);
+
   await supabase
     .from("profiles")
-    .update({
-      line_pending_action: "edit_note_step",
-      line_pending_data: editParsed,
-    })
+    .update({ line_pending_action: null, line_pending_data: null })
     .eq("id", profileId);
 
-  await pushToLine(lineUserId, `จากข้อมูล: ฿${editParsed.amount.toLocaleString()} - ${editParsed.category}\n\nต้องการแก้ไขหรือเพิ่ม Note ด้วยไหมครับ? (เช่น โน้ต: กินข้าวกับเพื่อน)\n\nพิมพ์ no หรือ none หากไม่ต้อง หรือพิมพ์ cc เพื่อยกเลิก`);
+  if (updateError) {
+    await pushToLine(lineUserId, "แก้ไขรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+  } else {
+    const catLabel = hasNote ? `${editParsed.category} (${editParsed.note})` : editParsed.category;
+    const personality = await pickPersonalityResponse(supabase, editParsed.category, editParsed.type, profileId, (profile as Record<string, unknown>).line_last_response as string ?? null);
+    await pushToLine(lineUserId, buildSuccessMessage(personality, editParsed.amount, catLabel));
+  }
 }
 
-// Step 2 of edit flow: handle note edit/addition, then confirm
-async function continueEditNoteStep(
+// Note flow: set the note on the last transaction immediately, no confirmation
+async function continueNoteStep(
   supabase: ReturnType<typeof serviceClient>,
   lineUserId: string,
   profileId: string,
-  text: string,
-  editParsed: { amount: number; category: string; note: string; type: "expense" | "income" } | null
+  text: string
 ): Promise<void> {
   if (/^(cancel|cc|ยกเลิก)$/i.test(text)) {
     await supabase
@@ -816,100 +846,41 @@ async function continueEditNoteStep(
     return;
   }
 
-  if (!editParsed) {
-    await supabase
-      .from("profiles")
-      .update({ line_pending_action: null, line_pending_data: null })
-      .eq("id", profileId);
-    await pushToLine(lineUserId, "เกิดข้อผิดพลาด ลองใหม่อีกครั้งนะครับ");
-    return;
-  }
-
-  // If user says "no" or "none", keep the existing note from editParsed
-  // Otherwise, use the provided text as the new note
-  if (!/^(no|none|ไม่|ไม่ต้อง)$/i.test(text)) {
-    // Extract note from text (could be "note: xxx" or just "xxx")
-    const noteMatch = text.match(/^(?:note|โน้ต)\s*:\s*(.+)$/i);
-    const newNote = noteMatch ? noteMatch[1].trim() : text.trim();
-    editParsed.note = newNote;
-  }
-
-  const txnLabel = editParsed.note
-    ? `฿${editParsed.amount.toLocaleString()} - ${editParsed.category} (${editParsed.note})`
-    : `฿${editParsed.amount.toLocaleString()} - ${editParsed.category}`;
-
-  // Move to confirmation step
-  await supabase
-    .from("profiles")
-    .update({
-      line_pending_action: "confirm_edit",
-      line_pending_data: editParsed,
-    })
-    .eq("id", profileId);
-
-  await pushToLine(lineUserId, `ตรวจสอบหน่อย: ${txnLabel}\n\nพิมพ์ y เพื่อยืนยัน หรือ n เพื่อลองใหม่`);
+  await applyNoteToLastTransaction(supabase, lineUserId, profileId, text.trim());
 }
 
-// Handles confirmation of edited transaction
-async function confirmEditTransaction(
+// Shared by both the one-shot "note <text>" trigger and the two-step "note" flow
+async function applyNoteToLastTransaction(
   supabase: ReturnType<typeof serviceClient>,
   lineUserId: string,
   profileId: string,
-  text: string,
-  editParsed: { amount: number; category: string; note: string; type: "expense" | "income" }
+  newNote: string
 ): Promise<void> {
-  if (/^(y|yes)$/i.test(text)) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id, line_last_transaction_id, line_last_response")
-      .eq("id", profileId)
-      .single();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, line_last_transaction_id")
+    .eq("id", profileId)
+    .single();
 
-    if (!profile?.line_last_transaction_id) {
-      await supabase
-        .from("profiles")
-        .update({ line_pending_action: null, line_pending_data: null })
-        .eq("id", profileId);
-      await pushToLine(lineUserId, "ไม่พบรายการที่จะแก้ไข ลองใหม่อีกครั้งนะครับ");
-      return;
-    }
+  await supabase
+    .from("profiles")
+    .update({ line_pending_action: null, line_pending_data: null })
+    .eq("id", profileId);
 
-    const { error: updateError } = await supabase
-      .from("transactions")
-      .update({
-        amount: editParsed.amount,
-        category: editParsed.category,
-        note: editParsed.note,
-        type: editParsed.type,
-      })
-      .eq("id", profile.line_last_transaction_id);
+  if (!profile?.line_last_transaction_id) {
+    await pushToLine(lineUserId, "ไม่พบรายการที่จะแก้ไข ลองใหม่อีกครั้งนะครับ");
+    return;
+  }
 
-    await supabase
-      .from("profiles")
-      .update({ line_pending_action: null, line_pending_data: null })
-      .eq("id", profileId);
+  const { error: updateError } = await supabase
+    .from("transactions")
+    .update({ note: newNote })
+    .eq("id", profile.line_last_transaction_id);
 
-    if (updateError) {
-      await pushToLine(lineUserId, "แก้ไขรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
-    } else {
-      const catLabel = editParsed.note ? `${editParsed.category} (${editParsed.note})` : editParsed.category;
-      const personality = await pickPersonalityResponse(supabase, editParsed.category, editParsed.type, profileId, (profile as Record<string, unknown>).line_last_response as string ?? null);
-      await pushToLine(lineUserId, buildSuccessMessage(personality, editParsed.amount, catLabel));
-    }
-  } else if (/^(n|no)$/i.test(text)) {
-    await supabase
-      .from("profiles")
-      .update({ line_pending_action: "edit_transaction", line_pending_data: null })
-      .eq("id", profileId);
-    await pushToLine(lineUserId, "ต้องการแก้ไขเป็นอะไรดีรับ? (เช่น 150 food restaurant)\n\nพิมพ์ cc เพื่อยกเลิก");
-  } else if (/^(cancel|cc|ยกเลิก)$/i.test(text)) {
-    await supabase
-      .from("profiles")
-      .update({ line_pending_action: null, line_pending_data: null })
-      .eq("id", profileId);
-    await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
+  if (updateError) {
+    await pushToLine(lineUserId, "แก้ไข Note ไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
   } else {
-    await pushToLine(lineUserId, "พิมพ์ y เพื่อยืนยัน n เพื่อลองใหม่ หรือ cc เพื่อยกเลิก");
+    await pushToLine(lineUserId, newNote ? `เพิ่ม Note แล้วครับ: ${newNote}` : "ลบ Note แล้วครับ");
   }
 }
 
@@ -1463,55 +1434,8 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    if (flowProfile?.line_pending_action === "edit_note_step") {
-      const editParsed = flowProfile.line_pending_data as { amount: number; category: string; note: string; type: "expense" | "income" } | null;
-      if (editParsed) {
-        await continueEditNoteStep(supabase, lineUserId, flowProfile.id, text, editParsed);
-        continue;
-      }
-    }
-
-    if (flowProfile?.line_pending_action === "confirm_edit") {
-      const editParsed = flowProfile.line_pending_data as { amount: number; category: string; note: string; type: "expense" | "income" } | null;
-      if (editParsed) {
-        await confirmEditTransaction(supabase, lineUserId, flowProfile.id, text, editParsed);
-        continue;
-      }
-    }
-
-    if (flowProfile?.line_pending_action === "confirm_delete") {
-      if (/^(y|yes)$/i.test(text)) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("id, line_last_transaction_id")
-          .eq("id", flowProfile.id)
-          .single();
-
-        if (profile?.line_last_transaction_id) {
-          const { error: delError } = await supabase
-            .from("transactions")
-            .delete()
-            .eq("id", profile.line_last_transaction_id);
-
-          if (!delError) {
-            await supabase
-              .from("profiles")
-              .update({ line_last_transaction_id: null, line_pending_action: null })
-              .eq("id", profile.id);
-            await pushToLine(lineUserId, "ลบรายการล่าสุดแล้วครับ!");
-          } else {
-            await pushToLine(lineUserId, "ลบรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
-          }
-        }
-      } else if (/^(cancel|cc|ยกเลิก)$/i.test(text)) {
-        await supabase
-          .from("profiles")
-          .update({ line_pending_action: null, line_pending_data: null })
-          .eq("id", flowProfile.id);
-        await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
-      } else {
-        await pushToLine(lineUserId, "พิมพ์ y เพื่อยืนยัน หรือ cc เพื่อยกเลิก");
-      }
+    if (flowProfile?.line_pending_action === "note_step") {
+      await continueNoteStep(supabase, lineUserId, flowProfile.id, text);
       continue;
     }
 
@@ -1585,7 +1509,7 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // --- Delete last transaction (start confirmation) ---
+    // --- Delete last transaction (immediate, no confirmation; "undo" restores it) ---
     if (/^(delete|del|ลบ)$/i.test(text)) {
       const { data: delProfile } = await supabase
         .from("profiles")
@@ -1598,30 +1522,80 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      // Fetch the transaction to show it
-      const { data: txn } = await supabase
+      const { data: deletedTxn } = await supabase
         .from("transactions")
-        .select("amount, category, note")
+        .select("date, amount, category, note, spender, user_id, type")
         .eq("id", delProfile.line_last_transaction_id)
         .single();
 
-      if (!txn) {
-        await pushToLine(lineUserId, "ไม่พบรายการล่าสุด ลองใหม่อีกครั้งนะครับ");
-        continue;
+      const { error: delError } = await supabase
+        .from("transactions")
+        .delete()
+        .eq("id", delProfile.line_last_transaction_id);
+
+      if (delError) {
+        await pushToLine(lineUserId, "ลบรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+      } else {
+        const { error: snapshotError } = await supabase
+          .from("profiles")
+          .update({
+            line_last_transaction_id: null,
+            line_pending_action: null,
+            line_last_deleted: deletedTxn ?? null,
+          })
+          .eq("id", delProfile.id);
+
+        await pushToLine(
+          lineUserId,
+          snapshotError ? "ลบรายการล่าสุดแล้วครับ!" : "ลบรายการล่าสุดแล้วครับ! (พิมพ์ undo เพื่อกู้คืน)"
+        );
       }
-
-      const txnLabel = txn.note ? `฿${txn.amount.toLocaleString()} - ${txn.category} (${txn.note})` : `฿${txn.amount.toLocaleString()} - ${txn.category}`;
-      await supabase
-        .from("profiles")
-        .update({ line_pending_action: "confirm_delete", line_pending_data: null })
-        .eq("id", delProfile.id);
-
-      await pushToLine(lineUserId, `แน่ใจนะ? ต้องการลบ ${txnLabel} ใช่มั้ย?\n\nพิมพ์ y เพื่อยืนยัน หรือ cc เพื่อยกเลิก`);
       continue;
     }
 
-    // --- Edit last transaction (start flow) ---
-    if (/^edit$/i.test(text)) {
+    // --- Undo the last delete ---
+    if (/^(undo|กู้คืน)$/i.test(text)) {
+      const { data: undoProfile } = await supabase
+        .from("profiles")
+        .select("id, line_last_deleted")
+        .eq("line_user_id", lineUserId)
+        .single();
+
+      const deleted = undoProfile?.line_last_deleted as
+        | { date: string; amount: number; category: string; note: string | null; spender: string | null; user_id: string; type: "expense" | "income" }
+        | null;
+
+      if (!undoProfile || !deleted) {
+        await pushToLine(lineUserId, "ไม่มีรายการที่ลบล่าสุดให้กู้คืนครับ");
+        continue;
+      }
+
+      const { data: restored, error: restoreError } = await supabase
+        .from("transactions")
+        .insert([deleted])
+        .select("id")
+        .single();
+
+      if (restoreError || !restored) {
+        await pushToLine(lineUserId, "กู้คืนรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+        continue;
+      }
+
+      await supabase
+        .from("profiles")
+        .update({ line_last_transaction_id: restored.id, line_last_deleted: null })
+        .eq("id", undoProfile.id);
+
+      const txnLabel = deleted.note ? `฿${deleted.amount.toLocaleString()} - ${deleted.category} (${deleted.note})` : `฿${deleted.amount.toLocaleString()} - ${deleted.category}`;
+      await pushToLine(lineUserId, `กู้คืนรายการแล้วครับ: ${txnLabel}`);
+      continue;
+    }
+
+    // --- Edit last transaction: one-shot "edit <amount> <category> [note]" or bare "edit" to start a flow ---
+    if (/^edit\b\s*(.*)$/i.test(text)) {
+      const editMatch = text.match(/^edit\b\s*(.*)$/i);
+      const editArgs = editMatch?.[1]?.trim() ?? "";
+
       const { data: editProfile } = await supabase
         .from("profiles")
         .select("id, line_last_transaction_id")
@@ -1630,6 +1604,11 @@ export async function POST(req: NextRequest) {
 
       if (!editProfile?.line_last_transaction_id) {
         await pushToLine(lineUserId, "ไม่พบรายการล่าสุดสำหรับแก้ไขหรือลบครับ");
+        continue;
+      }
+
+      if (editArgs) {
+        await applyEditToLastTransaction(supabase, lineUserId, editProfile.id, editArgs);
         continue;
       }
 
@@ -1656,6 +1635,34 @@ export async function POST(req: NextRequest) {
         await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
       } else {
         await pushToLine(lineUserId, `รายการล่าสุด: ${txnLabel}\n\nต้องการแก้ไขยอดเงิน หรือ หมวดหมู่ไหมครับ? (เช่น 150 food restaurant)\n\nพิมพ์ cc เพื่อยกเลิก`);
+      }
+      continue;
+    }
+
+    // --- Note on last transaction: one-shot "note <text>" or bare "note" to start a flow ---
+    if (/^(?:note|โน้ต)\b\s*:?\s*(.*)$/i.test(text)) {
+      const noteMatch = text.match(/^(?:note|โน้ต)\b\s*:?\s*(.*)$/i);
+      const noteText = noteMatch?.[1]?.trim() ?? "";
+
+      const { data: noteProfile } = await supabase
+        .from("profiles")
+        .select("id, line_last_transaction_id")
+        .eq("line_user_id", lineUserId)
+        .single();
+
+      if (!noteProfile?.line_last_transaction_id) {
+        await pushToLine(lineUserId, "ไม่พบรายการล่าสุดสำหรับเพิ่ม Note ครับ");
+        continue;
+      }
+
+      if (noteText) {
+        await applyNoteToLastTransaction(supabase, lineUserId, noteProfile.id, noteText);
+      } else {
+        await supabase
+          .from("profiles")
+          .update({ line_pending_action: "note_step", line_pending_data: null })
+          .eq("id", noteProfile.id);
+        await pushToLine(lineUserId, "อยากเพิ่ม Note ว่าอะไรครับ?\n\nพิมพ์ cc เพื่อยกเลิก");
       }
       continue;
     }
