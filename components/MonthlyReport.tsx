@@ -28,6 +28,27 @@ function buildPieData(transactions: Transaction[]) {
     .sort((a, b) => b.value - a.value);
 }
 
+function toLocalDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Custom pie label: percent only (name is already in the Legend) and skipped
+// for tiny slices — showing "name + percent" at a fixed font size was
+// overflowing/overlapping on narrow mobile widths.
+function renderPieLabel(props: { cx: number; cy: number; midAngle: number; outerRadius: number; percent: number }) {
+  const { cx, cy, midAngle, outerRadius, percent } = props;
+  if (percent < 0.04) return null;
+  const RADIAN = Math.PI / 180;
+  const radius = outerRadius + 14;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text x={x} y={y} fill="#374151" textAnchor={x > cx ? "start" : "end"} dominantBaseline="central" fontSize={10} fontWeight={700}>
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
+}
+
 function exportCSV(transactions: Transaction[], monthValue: string) {
   const headers = ["id", "date", "amount", "category", "note", "spender", "created_at"];
   const rows = transactions.map((t) =>
@@ -61,6 +82,8 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
     return { value: `${now.getFullYear()}-${String(i + 1).padStart(2, "0")}`, label: d.toLocaleDateString("en-US", { month: "long", year: "numeric" }) };
   });
   const [selectedMonth, setSelectedMonth] = useState(months[now.getMonth()].value);
+  const [reportMode, setReportMode] = useState<"monthly" | "daily">("monthly");
+  const [selectedDate, setSelectedDate] = useState(() => toLocalDateStr(new Date()));
   const [currentUser, setCurrentUser] = useState<string>("");
   const [selectedSpender, setSelectedSpender] = useState("current");
 
@@ -115,6 +138,23 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
   const pieData = buildPieData(monthlyExpenses);
   const monthLabel = months.find((m) => m.value === selectedMonth)?.label ?? selectedMonth;
 
+  const dailyTx = spenderFiltered.filter((t) => localDate(t.date) === selectedDate);
+  const dailyExpenses = dailyTx.filter((t) => (t.type ?? "expense") === "expense");
+  const dailyIncome = dailyTx.filter((t) => t.type === "income");
+  const totalExpensesDaily = dailyExpenses.reduce((s, t) => s + t.amount, 0);
+  const totalIncomeDaily = dailyIncome.reduce((s, t) => s + t.amount, 0);
+  const pieDataDaily = buildPieData(dailyExpenses);
+  const dailyLabel = new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+  const isDaily = reportMode === "daily";
+  const activeTx = isDaily ? dailyTx : monthlyTx;
+  const activeExpenses = isDaily ? dailyExpenses : monthlyExpenses;
+  const activeIncome = isDaily ? dailyIncome : monthlyIncome;
+  const activeTotalExpenses = isDaily ? totalExpensesDaily : totalExpenses;
+  const activeTotalIncome = isDaily ? totalIncomeDaily : totalIncome;
+  const activePieData = isDaily ? pieDataDaily : pieData;
+  const periodLabel = isDaily ? dailyLabel : monthLabel;
+
   return (
     <div className="flex flex-col h-full">
       {/* Sticky header */}
@@ -124,24 +164,57 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
       >
         <div>
           <h1 className="text-lg font-black" style={{ color: "#1f2937", letterSpacing: "-0.5px" }}>
-            Monthly Report 📈
+            Report 📈
           </h1>
           <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>
-            {monthLabel} · {monthlyTx.length} transactions ({monthlyExpenses.length} expenses, {monthlyIncome.length} income)
+            {periodLabel} · {activeTx.length} transactions ({activeExpenses.length} expenses, {activeIncome.length} income)
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Month selector */}
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="text-xs font-bold rounded-xl px-3 py-2 cursor-pointer outline-none"
-            style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
-          >
-            {months.map((m) => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-          </select>
+          {/* Monthly / Daily toggle */}
+          <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: "#fafafa", border: "2px solid #f3e8ff" }}>
+            <button
+              onClick={() => setReportMode("monthly")}
+              className="text-xs font-extrabold px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                background: reportMode === "monthly" ? "linear-gradient(135deg, #ec4899, #8b5cf6)" : "transparent",
+                color: reportMode === "monthly" ? "#fff" : "#9ca3af",
+              }}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setReportMode("daily")}
+              className="text-xs font-extrabold px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                background: reportMode === "daily" ? "linear-gradient(135deg, #ec4899, #8b5cf6)" : "transparent",
+                color: reportMode === "daily" ? "#fff" : "#9ca3af",
+              }}
+            >
+              Daily
+            </button>
+          </div>
+          {/* Month or Date selector */}
+          {reportMode === "monthly" ? (
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="text-xs font-bold rounded-xl px-3 py-2 cursor-pointer outline-none"
+              style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+            >
+              {months.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="text-xs font-bold rounded-xl px-3 py-2 cursor-pointer outline-none"
+              style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+            />
+          )}
           {/* Spender filter */}
           <select
             value={selectedSpender}
@@ -157,7 +230,7 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
           </select>
           {/* Export CSV */}
           <button
-            onClick={() => exportCSV(monthlyTx, selectedMonth)}
+            onClick={() => exportCSV(activeTx, isDaily ? selectedDate : selectedMonth)}
             className="text-xs font-extrabold px-4 py-2 rounded-xl text-white flex items-center gap-1.5"
             style={{
               background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
@@ -200,22 +273,22 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
               <tr style={{ borderTop: "1px solid #fdf2f8" }}>
                 <td className="py-3 px-5 text-xs font-extrabold" style={{ color: "#9ca3af" }}>Income</td>
                 <td className="py-3 px-5 text-sm font-black text-right" style={{ color: "#10b981" }}>
-                  ฿{totalIncome.toFixed(2)}
+                  ฿{activeTotalIncome.toFixed(2)}
                 </td>
               </tr>
               <tr style={{ borderTop: "1px solid #fdf2f8" }}>
                 <td className="py-3 px-5 text-xs font-extrabold" style={{ color: "#9ca3af" }}>Expenses</td>
                 <td className="py-3 px-5 text-sm font-black text-right" style={{ color: "#1f2937" }}>
-                  ฿{totalExpenses.toFixed(2)}
+                  ฿{activeTotalExpenses.toFixed(2)}
                 </td>
               </tr>
               <tr style={{ borderTop: "2px solid #f3e8ff" }}>
                 <td className="py-3 px-5 text-xs font-extrabold" style={{ color: "#7c3aed" }}>Net</td>
                 <td
                   className="py-3 px-5 text-sm font-black text-right"
-                  style={{ color: totalIncome - totalExpenses >= 0 ? "#10b981" : "#ef4444" }}
+                  style={{ color: activeTotalIncome - activeTotalExpenses >= 0 ? "#10b981" : "#ef4444" }}
                 >
-                  ฿{(totalIncome - totalExpenses).toFixed(2)}
+                  ฿{(activeTotalIncome - activeTotalExpenses).toFixed(2)}
                 </td>
               </tr>
             </tbody>
@@ -229,17 +302,17 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
             <div className="flex items-center justify-center h-48">
               <span className="loading loading-spinner loading-md" style={{ color: "#a78bfa" }} />
             </div>
-          ) : pieData.length === 0 ? (
-            <p className="text-center py-10 text-sm font-bold" style={{ color: "#9ca3af" }}>No expenses this month.</p>
+          ) : activePieData.length === 0 ? (
+            <p className="text-center py-10 text-sm font-bold" style={{ color: "#9ca3af" }}>No expenses for this period.</p>
           ) : (
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
                 <Pie
-                  data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  data={activePieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
+                  label={renderPieLabel}
                   labelLine={false}
                 >
-                  {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  {activePieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
                 <Tooltip formatter={(v: number) => `฿${v.toFixed(2)}`} />
                 <Legend wrapperStyle={{ fontSize: "11px", fontWeight: 700 }} />
@@ -251,29 +324,29 @@ export default function MonthlyReport({ newTransaction }: MonthlyReportProps) {
         {/* Monthly Spending Trend */}
         <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
           <div className="mb-4">
-            <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Monthly Spending Trend</h2>
-            <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>Last 6 months</p>
+            <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>{isDaily ? "Daily" : "Monthly"} Spending Trend</h2>
+            <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>{isDaily ? "Last 14 days" : "Last 6 months"}</p>
           </div>
           {loading ? (
             <div className="flex items-center justify-center h-44">
               <span className="loading loading-spinner loading-md" style={{ color: "#a78bfa" }} />
             </div>
           ) : (
-            <SpendingChart transactions={spenderFiltered} mode="monthly" />
+            <SpendingChart transactions={spenderFiltered} mode={isDaily ? "daily" : "monthly"} />
           )}
         </div>
 
         {/* Full transaction list */}
         <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
           <div className="flex items-center justify-between px-5 py-4">
-            <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Transactions — {monthLabel}</h2>
+            <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>Transactions — {periodLabel}</h2>
           </div>
           {loading ? (
             <div className="flex items-center justify-center h-24 pb-4">
               <span className="loading loading-spinner loading-md" style={{ color: "#a78bfa" }} />
             </div>
           ) : (
-            <RecentTransactions transactions={monthlyTx} limit={monthlyTx.length} />
+            <RecentTransactions transactions={activeTx} limit={activeTx.length} />
           )}
         </div>
       </PullToRefresh>

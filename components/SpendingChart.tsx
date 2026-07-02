@@ -13,7 +13,7 @@ import { Transaction } from "@/lib/supabase";
 
 interface SpendingChartProps {
   transactions: Transaction[];
-  mode?: "category" | "monthly";
+  mode?: "category" | "monthly" | "daily";
 }
 
 function buildCategoryData(transactions: Transaction[]) {
@@ -45,8 +45,28 @@ function buildMonthlyData(transactions: Transaction[]) {
     .map(([label, total]) => ({ label, total: Math.round(total * 100) / 100 }));
 }
 
+function buildDailyData(transactions: Transaction[]) {
+  const daily: Record<string, number> = {};
+  transactions
+    .filter((t) => (t.type ?? "expense") === "expense")
+    .forEach((t) => {
+      const d = t.date.slice(0, 10);
+      daily[d] = (daily[d] ?? 0) + t.amount;
+    });
+  return Object.entries(daily)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-14)
+    .map(([date, total]) => ({
+      label: new Date(date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      total: Math.round(total * 100) / 100,
+    }));
+}
+
 export default function SpendingChart({ transactions, mode = "category" }: SpendingChartProps) {
-  const data = mode === "monthly" ? buildMonthlyData(transactions) : buildCategoryData(transactions);
+  const data =
+    mode === "monthly" ? buildMonthlyData(transactions) :
+    mode === "daily" ? buildDailyData(transactions) :
+    buildCategoryData(transactions);
 
   if (data.length === 0) {
     return (
