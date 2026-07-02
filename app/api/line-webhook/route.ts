@@ -115,7 +115,17 @@ function parseTransaction(
   const bahtMatch = cleaned.match(/([\d,]+(?:\.\d{1,2})?)\s*บาท/);
   const symbolMatch = cleaned.match(/฿\s*([\d,]+(?:\.\d{1,2})?)/);
 
-  if (bahtMatch) {
+  // Government co-pay / bill-payment slips can show a gross price and a
+  // discount line before the real paid amount (e.g. "ค่าสินค้า/บริการ 95
+  // บาท" then "สิทธิไทยช่วยไทยพลัส -57 บาท") — a bare bahtMatch above greedily
+  // grabs the first (gross) number. The explicit "จำนวนเงินที่ชำระ" (amount
+  // actually paid) label is authoritative when present and wins over it.
+  const paidLabelMatch = cleaned.match(/จำนวนเงินที่ชำระ[^\d]*([\d,]+(?:\.\d{1,2})?)\s*บาท/);
+
+  if (paidLabelMatch) {
+    amount = parseFloat(paidLabelMatch[1].replace(/,/g, ""));
+    rawAmountToken = paidLabelMatch[0];
+  } else if (bahtMatch) {
     amount = parseFloat(bahtMatch[1].replace(/,/g, ""));
     rawAmountToken = bahtMatch[0];
   } else if (symbolMatch) {
@@ -205,6 +215,16 @@ async function applyCategoryRules(
       `[category-rules] source="${source}" matched keyword "${hit.keyword}" in "${rawText}" -> category "${hit.category}" (was "Other")`
     );
     parsed.category = hit.category;
+
+    // The keyword is often just a shorthand trigger (e.g. "แฟ 20" meaning
+    // "coffee 20") rather than real note content, since it leaked into
+    // `parsed.note` only because it didn't match a category name during
+    // parsing. Strip it back out so it doesn't get saved as a bogus note.
+    const escapedKeyword = hit.keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    parsed.note = parsed.note
+      .replace(new RegExp(escapedKeyword, "gi"), "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
   } else {
     console.log(`[category-rules] source="${source}" no keyword match in "${rawText}" among ${allRules.length} rule(s) — keeping "Other"`);
   }
@@ -1054,6 +1074,20 @@ function extractRecipientName(rawText: string): string | null {
       const next = lines[i + 1].trim();
       if (/^(นาย|นาง(?:สาว)?|น\.ส\.)/.test(next)) return stripParenName(next);
     }
+  }
+
+  // Priority 2.5: anchor on "ถุงเงิน" — the merchant-side receiving-app icon
+  // label on ภาครัฐ (government) co-pay QR slips (e.g. "ไทยช่วยไทยพลัส"),
+  // where a user's เป๋าตัง app pays into a merchant's ถุงเงิน app. These slips
+  // have no masked account line for Priority 3 to anchor on, and the merchant
+  // name is a single word with no space, so it also fails the Thai-name-lines
+  // fallback below (which requires 2+ space-separated words) — that fallback
+  // was matching the category description line instead (e.g. "อาหาร ของหวาน
+  // เครื่องดื่ม"), a real bug seen on a live slip. The merchant name is always
+  // the very next line after the "ถุงเงิน" icon label.
+  const tungngoenIndex = lines.findIndex((line) => line === "ถุงเงิน");
+  if (tungngoenIndex !== -1 && lines[tungngoenIndex + 1]) {
+    return lines[tungngoenIndex + 1].trim();
   }
 
   // Priority 3: anchor on the sender's masked account number line — shape:
