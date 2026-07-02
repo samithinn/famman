@@ -1296,8 +1296,10 @@ async function handleShortcutRequest(
   const parsed = parseTransaction(text, categoryNames, "ocr");
   if (!parsed) {
     console.log("[shortcut] parseTransaction failed. rawText:", JSON.stringify(text));
-    await respond(lineUserId, randomFormatError());
-    return NextResponse.json({ error: "Unrecognized format", receivedText: text }, { status: 400 });
+    return NextResponse.json(
+      { error: "Unrecognized format", receivedText: text, message: randomFormatError() },
+      { status: 400 }
+    );
   }
 
   // Smart categorization: scan rawText against the user's OCR category_rules
@@ -1339,10 +1341,14 @@ async function handleShortcutRequest(
   }
 
   const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, profile.line_last_response ?? null);
+  // No LINE push here on purpose — this endpoint is hit directly by the iOS
+  // Shortcut (not a LINE webhook event), so there's no replyToken to reply
+  // with either. The Shortcut shows `message` as a local notification
+  // instead, keeping OCR entries off LINE's metered Push quota entirely
+  // (reserved for the daily cron summary only — see respond()/ReplyContext above).
   const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, userNote, parsed.category === "Other");
-  await respond(lineUserId, reply);
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, message: reply });
 }
 
 // Bank-slip photo sent directly in LINE chat. Runs the image through Google
