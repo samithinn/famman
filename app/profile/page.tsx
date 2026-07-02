@@ -11,7 +11,7 @@ type LineStatus = { linked: boolean };
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [form, setForm] = useState({ full_name: "", dob: "", photo_url: "" });
+  const [form, setForm] = useState({ full_name: "", dob: "", photo_url: "", first_name: "", last_name: "", phone: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -39,6 +39,9 @@ export default function ProfilePage() {
           full_name: profile.full_name || "",
           dob: profile.dob || "",
           photo_url: profile.photo_url || "",
+          first_name: profile.first_name || "",
+          last_name: profile.last_name || "",
+          phone: profile.phone || "",
         });
       }
       setLoading(false);
@@ -106,6 +109,9 @@ export default function ProfilePage() {
       full_name: form.full_name || null,
       dob: form.dob || null,
       photo_url: form.photo_url || null,
+      first_name: form.first_name || null,
+      last_name: form.last_name || null,
+      phone: form.phone || null,
       updated_at: new Date().toISOString(),
     });
     setSaving(false);
@@ -186,20 +192,6 @@ export default function ProfilePage() {
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>
-                PHOTO URL
-              </label>
-              <input
-                type="url"
-                placeholder="https://example.com/photo.jpg"
-                value={form.photo_url}
-                onChange={e => setForm({ ...form, photo_url: e.target.value })}
-                className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
-                style={{ border: "2px solid #f3e8ff", color: "#374151" }}
-              />
-            </div>
-
             {error && (
               <p className="text-xs font-semibold px-3 py-2 rounded-xl" style={{ background: "#fef2f2", color: "#ef4444" }}>
                 {error}
@@ -223,6 +215,83 @@ export default function ProfilePage() {
               }}
             >
               {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : "Save Profile 💾"}
+            </button>
+          </form>
+        </div>
+
+        {/* Contact Info card */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-4">
+          <h2 className="text-sm font-black mb-4" style={{ color: "#1f2937" }}>Contact Info</h2>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>
+                  FIRST NAME
+                </label>
+                <input
+                  type="text"
+                  placeholder="First name"
+                  value={form.first_name}
+                  onChange={e => setForm({ ...form, first_name: e.target.value })}
+                  className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
+                  style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>
+                  LAST NAME
+                </label>
+                <input
+                  type="text"
+                  placeholder="Last name"
+                  value={form.last_name}
+                  onChange={e => setForm({ ...form, last_name: e.target.value })}
+                  className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
+                  style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>
+                MOBILE PHONE
+              </label>
+              <input
+                type="tel"
+                placeholder="e.g. 081-234-5678"
+                value={form.phone}
+                onChange={e => setForm({ ...form, phone: e.target.value })}
+                className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
+                style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>
+                EMAIL
+              </label>
+              <div
+                className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold"
+                style={{ border: "2px solid #f3e8ff", color: "#9ca3af", background: "#fafafa" }}
+              >
+                {userEmail}
+              </div>
+              <p className="text-xs mt-1" style={{ color: "#c4b5fd" }}>
+                Tied to your login — can&apos;t be changed here.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full py-3 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-2"
+              style={{
+                background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
+                boxShadow: "0 4px 14px rgba(236,72,153,0.35)",
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : "Save Contact Info 💾"}
             </button>
           </form>
         </div>
@@ -299,6 +368,33 @@ export default function ProfilePage() {
               </button>
             </div>
           )}
+        </div>
+
+        {/* About / Credit card */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.png"
+            alt="FamMan"
+            className="w-14 h-14 rounded-2xl object-cover mx-auto mb-3"
+            style={{ boxShadow: "0 4px 14px rgba(139,92,246,0.25)" }}
+          />
+          <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>FamMan</h2>
+          <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>Expenses and Incomes Tracker</p>
+
+          <div className="mt-5 pt-5" style={{ borderTop: "1px solid #f3e8ff" }}>
+            <p className="text-[10px] font-extrabold" style={{ color: "#c4b5fd", letterSpacing: "1px" }}>
+              DEVELOPER &amp; FOUNDER
+            </p>
+            <p className="text-sm font-black mt-1" style={{ color: "#7c3aed" }}>LT Samithin Kongkaew, RTN</p>
+            <a
+              href="mailto:samithinn@gmail.com"
+              className="text-xs font-semibold mt-1 inline-block"
+              style={{ color: "#a78bfa" }}
+            >
+              samithinn@gmail.com
+            </a>
+          </div>
         </div>
       </div>
     </div>

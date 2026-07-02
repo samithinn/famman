@@ -29,6 +29,9 @@ CREATE POLICY "users delete own transactions"
 CREATE TABLE IF NOT EXISTS profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name text,
+  first_name text,
+  last_name text,
+  phone text,
   dob date,
   photo_url text,
   monthly_budget numeric DEFAULT 0,
@@ -65,6 +68,14 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS summary_preferences jsonb
 -- restore it (added for existing installs; the CREATE TABLE above only
 -- applies to a brand-new table).
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_last_deleted jsonb;
+
+-- Contact info card on the Profile page (added for existing installs; the
+-- CREATE TABLE above only applies to a brand-new table). full_name is left
+-- as-is (still the source of truth for spender attribution everywhere else
+-- in the app) — first_name/last_name/phone are additional contact fields.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS first_name text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_name text;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS phone text;
 
 -- Backfill: existing rows predate the column default above and would
 -- otherwise be NULL (i.e. silently stop receiving the push they already

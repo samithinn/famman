@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { X, LogOut } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 export type View = "dashboard" | "transactions" | "report" | "settings";
 
@@ -74,36 +75,36 @@ export default function Sidebar({ activeView, onViewChange, onAddTransaction }: 
           <span>Profile</span>
         </button>
 
-      {/* Auto-sync panel */}
+      {/* Log out */}
       <div className="p-3">
-        <div
-          className="rounded-xl p-3"
-          style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}
+        <button
+          onClick={async () => {
+            await supabase.auth.signOut();
+            window.location.href = "/login";
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-extrabold transition-all duration-150"
+          style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#ef4444" }}
         >
-          <div
-            className="text-xs font-extrabold mb-2"
-            style={{ color: "#6b7280", letterSpacing: "1px" }}
+          <span
+            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: "#fee2e2" }}
           >
-            AUTO-SYNC
-          </div>
-          <div className="flex items-center gap-1.5 mb-1">
-            <div
-              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-              style={{ background: "#10b981", boxShadow: "0 0 6px #10b981" }}
-            />
-            <span className="text-xs font-extrabold" style={{ color: "#15803d" }}>
-              LINE Bot Active
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div
-              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-              style={{ background: "#10b981", boxShadow: "0 0 6px #10b981" }}
-            />
-            <span className="text-xs font-extrabold" style={{ color: "#15803d" }}>
-              iOS Shortcuts Active
-            </span>
-          </div>
+            <LogOut size={15} />
+          </span>
+          Log Out
+        </button>
+      </div>
+
+      {/* Credit */}
+      <div className="px-5 py-3 text-center" style={{ borderTop: "1px solid #e9d5ff" }}>
+        <div className="text-[9px] font-extrabold" style={{ color: "#c4b5fd", letterSpacing: "1px" }}>
+          DEVELOPER & FOUNDER
+        </div>
+        <div className="text-xs font-extrabold mt-0.5" style={{ color: "#7c3aed" }}>
+          LT Samithin Kongkaew, RTN
+        </div>
+        <div className="text-[10px] font-semibold mt-0.5" style={{ color: "#a78bfa" }}>
+          samithinn@gmail.com
         </div>
       </div>
     </div>
