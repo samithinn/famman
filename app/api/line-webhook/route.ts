@@ -1223,6 +1223,24 @@ function buildShortcutReply(
   return msg;
 }
 
+// One-line summary for the iOS Shortcut's local notification (limited
+// banner space, unlike the full chat-style reply above) — just enough to
+// confirm at a glance that the right amount/category/item was saved. Same
+// userNote-over-recipientName priority as buildShortcutReply, so both the
+// "with note" and "without note" Shortcut variants show the right detail.
+function buildShortcutNotification(
+  amount: number,
+  category: string,
+  recipientName: string | null,
+  userNote: string,
+  isOther: boolean
+): string {
+  const flag = isOther ? "⚠️" : "✅";
+  const detail = userNote || recipientName;
+  const label = detail ? `${category} · ${detail}` : category;
+  return `${flag} ฿${amount.toLocaleString()} - ${label}`;
+}
+
 function isValidApiKey(provided: string): boolean {
   const expected = process.env.WEBHOOK_API_KEY ?? "";
   if (!expected || provided.length !== expected.length) return false;
@@ -1297,7 +1315,7 @@ async function handleShortcutRequest(
   if (!parsed) {
     console.log("[shortcut] parseTransaction failed. rawText:", JSON.stringify(text));
     return NextResponse.json(
-      { error: "Unrecognized format", receivedText: text, message: randomFormatError() },
+      { error: "Unrecognized format", receivedText: text, message: "❌ Couldn't read amount/category — save it manually" },
       { status: 400 }
     );
   }
@@ -1340,15 +1358,16 @@ async function handleShortcutRequest(
       .eq("id", profile.id);
   }
 
-  const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, profile.line_last_response ?? null);
   // No LINE push here on purpose — this endpoint is hit directly by the iOS
   // Shortcut (not a LINE webhook event), so there's no replyToken to reply
   // with either. The Shortcut shows `message` as a local notification
   // instead, keeping OCR entries off LINE's metered Push quota entirely
   // (reserved for the daily cron summary only — see respond()/ReplyContext above).
-  const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, userNote, parsed.category === "Other");
+  // Kept short (unlike buildShortcutReply's chat-style message) since
+  // notification banner space is limited.
+  const notification = buildShortcutNotification(parsed.amount, parsed.category, recipientName, userNote, parsed.category === "Other");
 
-  return NextResponse.json({ ok: true, message: reply });
+  return NextResponse.json({ ok: true, message: notification });
 }
 
 // Bank-slip photo sent directly in LINE chat. Runs the image through Google
