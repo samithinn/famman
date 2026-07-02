@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { ImageAnnotatorClient } from "@google-cloud/vision";
 import { createHmac, timingSafeEqual } from "crypto";
+import { AsyncLocalStorage } from "async_hooks";
 import { NextRequest, NextResponse } from "next/server";
 import {
   buildDailySummary,
@@ -11,6 +12,7 @@ import {
   fetchTransactionPage,
   formatPeriodLabel,
   pushToLine,
+  type LineMessagePayload,
   type SummaryPeriod,
 } from "@/lib/line-utils";
 
@@ -62,21 +64,50 @@ function verifySignature(body: string, signature: string): boolean {
   }
 }
 
-async function replyToLine(replyToken: string, text: string): Promise<void> {
+// Reply messages (using the replyToken from an incoming webhook event) are
+// free and unlimited; push messages are metered against LINE's monthly quota
+// (300/month on the free plan) and exhausting it makes the bot look "dead" —
+// see the "bot has no response" incident. So every response to a live LINE
+// event should go through `respond()` below, which replies for free when a
+// still-usable token is available for the event currently being processed,
+// and only falls back to push when it isn't (expired/already-used token,
+// reply API error, or no event at all — e.g. the iOS Shortcut endpoint and
+// the daily cron push, which never have a replyToken to begin with).
+type ReplyContext = { replyToken: string; used: boolean };
+const replyContextStorage = new AsyncLocalStorage<ReplyContext>();
+
+async function tryReplyToLine(replyToken: string, message: string | LineMessagePayload): Promise<boolean> {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token) return;
+  if (!token) return false;
+  const messages: LineMessagePayload[] = typeof message === "string" ? [{ type: "text", text: message }] : [message];
   try {
-    await fetch("https://api.line.me/v2/bot/message/reply", {
+    const res = await fetch("https://api.line.me/v2/bot/message/reply", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ replyToken, messages: [{ type: "text", text }] }),
+      body: JSON.stringify({ replyToken, messages }),
     });
-  } catch {
-    // Reply failure is non-fatal — transaction already saved
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.log(`[tryReplyToLine] LINE API error ${res.status}: ${body}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.log("[tryReplyToLine] request failed:", err instanceof Error ? err.message : err);
+    return false;
   }
+}
+
+async function respond(lineUserId: string, message: string | LineMessagePayload): Promise<void> {
+  const ctx = replyContextStorage.getStore();
+  if (ctx && !ctx.used && ctx.replyToken) {
+    ctx.used = true;
+    if (await tryReplyToLine(ctx.replyToken, message)) return;
+  }
+  await pushToLine(lineUserId, message);
 }
 
 function parseTransaction(
@@ -406,7 +437,7 @@ async function handleSummaryCommand(
     .single();
 
   if (!profile) {
-    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
     return;
   }
 
@@ -414,7 +445,7 @@ async function handleSummaryCommand(
     period === "daily"
       ? await buildDailySummary(supabase, profile.id)
       : await buildMonthlySummary(supabase, profile.id);
-  await pushToLine(lineUserId, buildSummaryFlex(summary));
+  await respond(lineUserId, buildSummaryFlex(summary));
 }
 
 // "Deep Dive" — the "ดูรายละเอียด" buttons under รายรับ/รายจ่าย in the
@@ -435,13 +466,13 @@ async function handleDeepDiveCommand(
     .single();
 
   if (!profile) {
-    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
     return;
   }
 
   const txnPage = await fetchTransactionPage(supabase, profile.id, period, periodKey, type, page);
   const periodLabel = formatPeriodLabel(period, periodKey);
-  await pushToLine(lineUserId, buildTransactionListFlex(period, periodKey, periodLabel, type, txnPage));
+  await respond(lineUserId, buildTransactionListFlex(period, periodKey, periodLabel, type, txnPage));
 }
 
 // --- Guided "add rule" flow (triggered by the "เพิ่มกฎ" Rich Menu button) ---
@@ -464,7 +495,7 @@ async function startAddCategoryFlow(
     .single();
 
   if (!profile) {
-    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
     return;
   }
 
@@ -475,11 +506,11 @@ async function startAddCategoryFlow(
 
   if (error) {
     console.log("[add-category-flow] failed to save pending state:", error.message);
-    await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    await respond(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
     return;
   }
 
-  await pushToLine(lineUserId, "ต้องการจะเพิ่มหมวดหมู่อะไรดีครับ? (เช่น Parking)\n\nพิมพ์ cc เพื่อยกเลิก");
+  await respond(lineUserId, "ต้องการจะเพิ่มหมวดหมู่อะไรดีครับ? (เช่น Parking)\n\nพิมพ์ cc เพื่อยกเลิก");
 }
 
 async function continueAddCategoryFlow(
@@ -495,7 +526,7 @@ async function continueAddCategoryFlow(
       .from("profiles")
       .update({ line_pending_action: null, line_pending_data: null })
       .eq("id", profileId);
-    await pushToLine(lineUserId, ADD_CATEGORY_CANCELLED);
+    await respond(lineUserId, ADD_CATEGORY_CANCELLED);
     return;
   }
 
@@ -504,7 +535,7 @@ async function continueAddCategoryFlow(
   if (pendingAction === "add_category_name") {
     const categoryName = text.trim();
     if (!categoryName) {
-      await pushToLine(lineUserId, "พิมพ์ชื่อหมวดหมู่ด้วยนะครับ");
+      await respond(lineUserId, "พิมพ์ชื่อหมวดหมู่ด้วยนะครับ");
       return;
     }
 
@@ -513,7 +544,7 @@ async function continueAddCategoryFlow(
       .update({ line_pending_action: "add_category_type", line_pending_data: { categoryName } })
       .eq("id", profileId);
 
-    await pushToLine(lineUserId, "นี่คือรายรับหรือรายจ่ายดีรับ?\n\nพิมพ์ 1 สำหรับ รายจ่าย (expense)\nพิมพ์ 2 สำหรับ รายรับ (income)\n\nพิมพ์ cc เพื่อยกเลิก");
+    await respond(lineUserId, "นี่คือรายรับหรือรายจ่ายดีรับ?\n\nพิมพ์ 1 สำหรับ รายจ่าย (expense)\nพิมพ์ 2 สำหรับ รายรับ (income)\n\nพิมพ์ cc เพื่อยกเลิก");
     return;
   }
 
@@ -525,7 +556,7 @@ async function continueAddCategoryFlow(
       : null;
 
     if (!type) {
-      await pushToLine(lineUserId, "พิมพ์ 1 สำหรับ รายจ่าย หรือ 2 สำหรับ รายรับ (หรือพิมพ์ cc เพื่อยกเลิก)");
+      await respond(lineUserId, "พิมพ์ 1 สำหรับ รายจ่าย หรือ 2 สำหรับ รายรับ (หรือพิมพ์ cc เพื่อยกเลิก)");
       return;
     }
 
@@ -535,7 +566,7 @@ async function continueAddCategoryFlow(
         .from("profiles")
         .update({ line_pending_action: null, line_pending_data: null })
         .eq("id", profileId);
-      await pushToLine(lineUserId, "เกิดข้อผิดพลาด ลองใหม่อีกครั้งนะครับ");
+      await respond(lineUserId, "เกิดข้อผิดพลาด ลองใหม่อีกครั้งนะครับ");
       return;
     }
 
@@ -555,7 +586,7 @@ async function continueAddCategoryFlow(
       (c: { name: string }) => c.name.toLowerCase() === categoryName.toLowerCase()
     );
     if (dup) {
-      await pushToLine(lineUserId, `หมวดหมู่ "${dup.name}" มีอยู่แล้วครับ (${typeLabel})`);
+      await respond(lineUserId, `หมวดหมู่ "${dup.name}" มีอยู่แล้วครับ (${typeLabel})`);
       return;
     }
 
@@ -563,7 +594,7 @@ async function continueAddCategoryFlow(
       .from("categories")
       .insert({ user_id: profileId, name: categoryName, type });
 
-    await pushToLine(
+    await respond(
       lineUserId,
       error
         ? "เพิ่มหมวดหมู่ไม่สำเร็จ ลองใหม่อีกครั้งนะครับ"
@@ -593,7 +624,7 @@ async function sendCategoryList(
     .order("name");
 
   if (!categories || categories.length === 0) {
-    await pushToLine(lineUserId, "ไม่มีหมวดหมู่ให้ใช้ ลองพิมพ์ 'cat' เพื่อเพิ่มหมวดหมู่ใหม่");
+    await respond(lineUserId, "ไม่มีหมวดหมู่ให้ใช้ ลองพิมพ์ 'cat' เพื่อเพิ่มหมวดหมู่ใหม่");
     return;
   }
 
@@ -608,7 +639,7 @@ async function sendCategoryList(
     message += "💰 รายรับ:\n" + incomes.map((c) => `• ${c}`).join("\n");
   }
 
-  await pushToLine(lineUserId, message);
+  await respond(lineUserId, message);
 }
 
 // --- Category submenu (Rich Menu "หมวดหมู่" button) ---
@@ -625,7 +656,7 @@ async function startCategoryMenuFlow(
     .single();
 
   if (!profile) {
-    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
     return;
   }
 
@@ -636,11 +667,11 @@ async function startCategoryMenuFlow(
 
   if (error) {
     console.log("[category-menu-flow] failed to save pending state:", error.message);
-    await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    await respond(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
     return;
   }
 
-  await pushToLine(
+  await respond(
     lineUserId,
     "เลือกทำรายการ:\n1: แสดงหมวดหมู่ทั้งหมด\n2: เพิ่มหมวดหมู่/กฎใหม่\n\nพิมพ์ cc เพื่อยกเลิก"
   );
@@ -657,7 +688,7 @@ async function continueCategoryMenuFlow(
       .from("profiles")
       .update({ line_pending_action: null, line_pending_data: null })
       .eq("id", profileId);
-    await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
+    await respond(lineUserId, "ยกเลิกแล้วครับ");
     return;
   }
 
@@ -679,7 +710,7 @@ async function continueCategoryMenuFlow(
     return;
   }
 
-  await pushToLine(lineUserId, "พิมพ์ 1 หรือ 2 นะครับ (หรือ cc เพื่อยกเลิก)");
+  await respond(lineUserId, "พิมพ์ 1 หรือ 2 นะครับ (หรือ cc เพื่อยกเลิก)");
 }
 
 // Bare "สรุป" is ambiguous (daily vs monthly), so it asks instead of
@@ -695,7 +726,7 @@ async function startSummaryMenuFlow(
     .single();
 
   if (!profile) {
-    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
     return;
   }
 
@@ -706,11 +737,11 @@ async function startSummaryMenuFlow(
 
   if (error) {
     console.log("[summary-menu-flow] failed to save pending state:", error.message);
-    await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    await respond(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
     return;
   }
 
-  await pushToLine(lineUserId, "กด 1 เพื่อดูสรุปรายวัน หรือกด 2 เพื่อดูสรุปรายเดือน\n\nพิมพ์ cc เพื่อยกเลิก");
+  await respond(lineUserId, "กด 1 เพื่อดูสรุปรายวัน หรือกด 2 เพื่อดูสรุปรายเดือน\n\nพิมพ์ cc เพื่อยกเลิก");
 }
 
 async function continueSummaryMenuFlow(
@@ -724,7 +755,7 @@ async function continueSummaryMenuFlow(
       .from("profiles")
       .update({ line_pending_action: null, line_pending_data: null })
       .eq("id", profileId);
-    await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
+    await respond(lineUserId, "ยกเลิกแล้วครับ");
     return;
   }
 
@@ -746,7 +777,7 @@ async function continueSummaryMenuFlow(
     return;
   }
 
-  await pushToLine(lineUserId, "กด 1 เพื่อดูสรุปรายวัน หรือกด 2 เพื่อดูสรุปรายเดือน (หรือ cc เพื่อยกเลิก)");
+  await respond(lineUserId, "กด 1 เพื่อดูสรุปรายวัน หรือกด 2 เพื่อดูสรุปรายเดือน (หรือ cc เพื่อยกเลิก)");
 }
 
 async function startAddRuleFlow(
@@ -760,7 +791,7 @@ async function startAddRuleFlow(
     .single();
 
   if (!profile) {
-    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
     return;
   }
 
@@ -771,11 +802,11 @@ async function startAddRuleFlow(
 
   if (error) {
     console.log("[add-rule-flow] failed to save pending state:", error.message);
-    await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    await respond(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
     return;
   }
 
-  await pushToLine(
+  await respond(
     lineUserId,
     "ต้องการเพิ่มกฎ chat หรือ slip ดีครับ?\nพิมพ์ 1 สำหรับ chat (ข้อความในแชท)\nพิมพ์ 2 สำหรับ slip (สลิป/ใบเสร็จ)\n\nพิมพ์ cancel เพื่อยกเลิก"
   );
@@ -793,7 +824,7 @@ async function continueEditTransactionFlow(
       .from("profiles")
       .update({ line_pending_action: null, line_pending_data: null })
       .eq("id", profileId);
-    await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
+    await respond(lineUserId, "ยกเลิกแล้วครับ");
     return;
   }
 
@@ -820,7 +851,7 @@ async function applyEditToLastTransaction(
       .from("profiles")
       .update({ line_pending_action: null, line_pending_data: null })
       .eq("id", profileId);
-    await pushToLine(lineUserId, "ไม่พบรายการที่จะแก้ไข ลองใหม่อีกครั้งนะครับ");
+    await respond(lineUserId, "ไม่พบรายการที่จะแก้ไข ลองใหม่อีกครั้งนะครับ");
     return;
   }
 
@@ -832,7 +863,7 @@ async function applyEditToLastTransaction(
 
   const editParsed = parseTransaction(text, categoryNames);
   if (!editParsed) {
-    await pushToLine(lineUserId, randomFormatError());
+    await respond(lineUserId, randomFormatError());
     return;
   }
 
@@ -857,11 +888,11 @@ async function applyEditToLastTransaction(
     .eq("id", profileId);
 
   if (updateError) {
-    await pushToLine(lineUserId, "แก้ไขรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    await respond(lineUserId, "แก้ไขรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
   } else {
     const catLabel = hasNote ? `${editParsed.category} (${editParsed.note})` : editParsed.category;
     const personality = await pickPersonalityResponse(supabase, editParsed.category, editParsed.type, profileId, (profile as Record<string, unknown>).line_last_response as string ?? null);
-    await pushToLine(lineUserId, buildSuccessMessage(personality, editParsed.amount, catLabel));
+    await respond(lineUserId, buildSuccessMessage(personality, editParsed.amount, catLabel));
   }
 }
 
@@ -877,7 +908,7 @@ async function continueNoteStep(
       .from("profiles")
       .update({ line_pending_action: null, line_pending_data: null })
       .eq("id", profileId);
-    await pushToLine(lineUserId, "ยกเลิกแล้วครับ");
+    await respond(lineUserId, "ยกเลิกแล้วครับ");
     return;
   }
 
@@ -903,7 +934,7 @@ async function applyNoteToLastTransaction(
     .eq("id", profileId);
 
   if (!profile?.line_last_transaction_id) {
-    await pushToLine(lineUserId, "ไม่พบรายการที่จะแก้ไข ลองใหม่อีกครั้งนะครับ");
+    await respond(lineUserId, "ไม่พบรายการที่จะแก้ไข ลองใหม่อีกครั้งนะครับ");
     return;
   }
 
@@ -913,9 +944,9 @@ async function applyNoteToLastTransaction(
     .eq("id", profile.line_last_transaction_id);
 
   if (updateError) {
-    await pushToLine(lineUserId, "แก้ไข Note ไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    await respond(lineUserId, "แก้ไข Note ไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
   } else {
-    await pushToLine(lineUserId, newNote ? `เพิ่ม Note แล้วครับ: ${newNote}` : "ลบ Note แล้วครับ");
+    await respond(lineUserId, newNote ? `เพิ่ม Note แล้วครับ: ${newNote}` : "ลบ Note แล้วครับ");
   }
 }
 
@@ -935,7 +966,7 @@ async function continueAddRuleFlow(
       .from("profiles")
       .update({ line_pending_action: null, line_pending_data: null })
       .eq("id", profileId);
-    await pushToLine(lineUserId, ADD_RULE_CANCELLED);
+    await respond(lineUserId, ADD_RULE_CANCELLED);
     return;
   }
 
@@ -949,7 +980,7 @@ async function continueAddRuleFlow(
       : null;
 
     if (!source) {
-      await pushToLine(lineUserId, "พิมพ์ 1 สำหรับ chat หรือ 2 สำหรับ slip นะครับ (หรือพิมพ์ cancel เพื่อยกเลิก)");
+      await respond(lineUserId, "พิมพ์ 1 สำหรับ chat หรือ 2 สำหรับ slip นะครับ (หรือพิมพ์ cancel เพื่อยกเลิก)");
       return;
     }
 
@@ -957,14 +988,14 @@ async function continueAddRuleFlow(
       .from("profiles")
       .update({ line_pending_action: "add_rule_keyword", line_pending_data: { source } })
       .eq("id", profileId);
-    await pushToLine(lineUserId, "โอเค! พิมพ์คำ (keyword) ที่ต้องการให้บอทจับคู่ เช่น ข้าว");
+    await respond(lineUserId, "โอเค! พิมพ์คำ (keyword) ที่ต้องการให้บอทจับคู่ เช่น ข้าว");
     return;
   }
 
   if (pendingAction === "add_rule_keyword") {
     const keyword = text.trim();
     if (!keyword) {
-      await pushToLine(lineUserId, "พิมพ์คำ (keyword) ที่ต้องการให้บอทจับคู่ด้วยนะครับ");
+      await respond(lineUserId, "พิมพ์คำ (keyword) ที่ต้องการให้บอทจับคู่ด้วยนะครับ");
       return;
     }
 
@@ -972,14 +1003,14 @@ async function continueAddRuleFlow(
       .from("profiles")
       .update({ line_pending_action: "add_rule_category", line_pending_data: { ...data, keyword } })
       .eq("id", profileId);
-    await pushToLine(lineUserId, "เกือบเสร็จแล้ว! พิมพ์หมวดหมู่ (category) ที่ต้องการให้จัดเข้า เช่น food");
+    await respond(lineUserId, "เกือบเสร็จแล้ว! พิมพ์หมวดหมู่ (category) ที่ต้องการให้จัดเข้า เช่น food");
     return;
   }
 
   if (pendingAction === "add_rule_category") {
     const category = text.trim();
     if (!category) {
-      await pushToLine(lineUserId, "พิมพ์หมวดหมู่ (category) ด้วยนะครับ");
+      await respond(lineUserId, "พิมพ์หมวดหมู่ (category) ด้วยนะครับ");
       return;
     }
 
@@ -996,7 +1027,7 @@ async function continueAddRuleFlow(
       .update({ line_pending_action: null, line_pending_data: null })
       .eq("id", profileId);
 
-    await pushToLine(
+    await respond(
       lineUserId,
       error
         ? "บันทึกกฎไม่สำเร็จ ลองใหม่อีกครั้งนะครับ"
@@ -1030,7 +1061,7 @@ async function handlePostback(
       await handleSummaryCommand(supabase, lineUserId, "monthly");
       return;
     case "help":
-      await pushToLine(lineUserId, await buildHelpMessage(supabase));
+      await respond(lineUserId, await buildHelpMessage(supabase));
       return;
     case "add_rule":
       await startAddRuleFlow(supabase, lineUserId);
@@ -1265,7 +1296,7 @@ async function handleShortcutRequest(
   const parsed = parseTransaction(text, categoryNames, "ocr");
   if (!parsed) {
     console.log("[shortcut] parseTransaction failed. rawText:", JSON.stringify(text));
-    await pushToLine(lineUserId, randomFormatError());
+    await respond(lineUserId, randomFormatError());
     return NextResponse.json({ error: "Unrecognized format", receivedText: text }, { status: 400 });
   }
 
@@ -1309,7 +1340,7 @@ async function handleShortcutRequest(
 
   const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, profile.line_last_response ?? null);
   const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, userNote, parsed.category === "Other");
-  await pushToLine(lineUserId, reply);
+  await respond(lineUserId, reply);
 
   return NextResponse.json({ ok: true });
 }
@@ -1330,7 +1361,7 @@ async function handleSlipImage(
     .single();
 
   if (!profile) {
-    await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
     return;
   }
 
@@ -1341,14 +1372,14 @@ async function handleSlipImage(
     text = result.fullTextAnnotation?.text ?? "";
   } catch (err) {
     console.log("[slip-ocr] Vision API failed:", err instanceof Error ? err.message : err);
-    await pushToLine(lineUserId, "อ่านสลิปไม่สำเร็จ ลองส่งรูปใหม่ หรือพิมพ์ยอดเองก็ได้ครับ");
+    await respond(lineUserId, "อ่านสลิปไม่สำเร็จ ลองส่งรูปใหม่ หรือพิมพ์ยอดเองก็ได้ครับ");
     return;
   }
 
   console.log("[slip-ocr] raw OCR lines:", JSON.stringify(text.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean)));
 
   if (!text.trim()) {
-    await pushToLine(lineUserId, "อ่านตัวหนังสือในรูปไม่ออกเลยครับ ลองส่งรูปที่ชัดกว่านี้ดูนะ");
+    await respond(lineUserId, "อ่านตัวหนังสือในรูปไม่ออกเลยครับ ลองส่งรูปที่ชัดกว่านี้ดูนะ");
     return;
   }
 
@@ -1361,7 +1392,7 @@ async function handleSlipImage(
   const parsed = parseTransaction(text, categoryNames, "ocr");
   if (!parsed) {
     console.log("[slip-ocr] parseTransaction failed. OCR text:", JSON.stringify(text));
-    await pushToLine(lineUserId, randomFormatError());
+    await respond(lineUserId, randomFormatError());
     return;
   }
 
@@ -1385,7 +1416,7 @@ async function handleSlipImage(
     .select("id");
 
   if (txError) {
-    await pushToLine(lineUserId, "บันทึกรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+    await respond(lineUserId, "บันทึกรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
     return;
   }
 
@@ -1399,7 +1430,7 @@ async function handleSlipImage(
 
   const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, profile.line_last_response ?? null);
   const reply = buildShortcutReply(personality, parsed.amount, parsed.category, recipientName, "", parsed.category === "Other");
-  await pushToLine(lineUserId, reply);
+  await respond(lineUserId, reply);
 }
 
 export async function POST(req: NextRequest) {
@@ -1454,22 +1485,37 @@ export async function POST(req: NextRequest) {
     const lineUserId = event.source?.userId;
     if (!lineUserId) continue;
 
+    const ctx: ReplyContext = { replyToken: event.replyToken ?? "", used: false };
+    await replyContextStorage.run(ctx, () => processEvent(supabase, event, lineUserId));
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+// One incoming LINE event's worth of command dispatch, run inside
+// replyContextStorage.run() (see POST below) so every `respond()` call in
+// this function and everything it calls can use the event's replyToken.
+async function processEvent(
+  supabase: ReturnType<typeof serviceClient>,
+  event: LineEvent,
+  lineUserId: string
+): Promise<void> {
     // --- Rich Menu button taps ---
     if (event.type === "postback") {
       await handlePostback(supabase, lineUserId, event.postback?.data ?? "");
-      continue;
+      return;
     }
 
     // --- Bank-slip photo sent in chat ---
     if (event.type === "message" && event.message?.type === "image" && event.message.id) {
       await handleSlipImage(supabase, lineUserId, event.message.id);
-      continue;
+      return;
     }
 
-    if (event.type !== "message" || event.message?.type !== "text") continue;
+    if (event.type !== "message" || event.message?.type !== "text") return;
     const text = (event.message.text ?? "").trim();
 
-    if (!text) continue;
+    if (!text) return;
 
     // --- Mid-flow answers take priority over every other command ---
     const { data: flowProfile } = await supabase
@@ -1480,22 +1526,22 @@ export async function POST(req: NextRequest) {
 
     if (flowProfile?.line_pending_action === "edit_transaction") {
       await continueEditTransactionFlow(supabase, lineUserId, flowProfile.id, text);
-      continue;
+      return;
     }
 
     if (flowProfile?.line_pending_action === "note_step") {
       await continueNoteStep(supabase, lineUserId, flowProfile.id, text);
-      continue;
+      return;
     }
 
     if (flowProfile?.line_pending_action === "summary_menu") {
       await continueSummaryMenuFlow(supabase, lineUserId, flowProfile.id, text);
-      continue;
+      return;
     }
 
     if (flowProfile?.line_pending_action === "category_menu") {
       await continueCategoryMenuFlow(supabase, lineUserId, flowProfile.id, text);
-      continue;
+      return;
     }
 
     if (flowProfile?.line_pending_action?.startsWith("add_category")) {
@@ -1507,7 +1553,7 @@ export async function POST(req: NextRequest) {
         flowProfile.line_pending_data as AddCategoryFlowData | null,
         text
       );
-      continue;
+      return;
     }
 
     if (flowProfile?.line_pending_action) {
@@ -1519,7 +1565,7 @@ export async function POST(req: NextRequest) {
         flowProfile.line_pending_data as AddRuleFlowData | null,
         text
       );
-      continue;
+      return;
     }
 
     // --- Account linking ---
@@ -1532,12 +1578,12 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!profile) {
-        await pushToLine(lineUserId, "Invalid link code. Generate a new one in the app → Settings → Connect LINE.");
-        continue;
+        await respond(lineUserId, "Invalid link code. Generate a new one in the app → Settings → Connect LINE.");
+        return;
       }
       if (new Date(profile.line_link_token_expires_at) < new Date()) {
-        await pushToLine(lineUserId, "Link code has expired. Please generate a new one in the app.");
-        continue;
+        await respond(lineUserId, "Link code has expired. Please generate a new one in the app.");
+        return;
       }
 
       await supabase
@@ -1545,17 +1591,17 @@ export async function POST(req: NextRequest) {
         .update({ line_user_id: lineUserId, line_link_token: null, line_link_token_expires_at: null })
         .eq("id", profile.id);
 
-      await pushToLine(
+      await respond(
         lineUserId,
         "Linked! You can now record transactions by sending:\n500 Food & Dining  (expense)\n350 Transportation  (expense)\n+5000 Salary  (income — use + prefix)\n\nSend \"summary\" or \"สรุป\" anytime to see this month's stats 📊"
       );
-      continue;
+      return;
     }
 
     // --- Help command ---
     if (/^(help|ช่วยด้วย|คู่มือ|วิธีใช้)$/i.test(text)) {
-      await pushToLine(lineUserId, await buildHelpMessage(supabase));
-      continue;
+      await respond(lineUserId, await buildHelpMessage(supabase));
+      return;
     }
 
     // --- Delete last transaction (immediate, no confirmation; "undo" restores it) ---
@@ -1567,8 +1613,8 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!delProfile?.line_last_transaction_id) {
-        await pushToLine(lineUserId, "ไม่พบรายการล่าสุดสำหรับแก้ไขหรือลบครับ");
-        continue;
+        await respond(lineUserId, "ไม่พบรายการล่าสุดสำหรับแก้ไขหรือลบครับ");
+        return;
       }
 
       const { data: deletedTxn } = await supabase
@@ -1583,7 +1629,7 @@ export async function POST(req: NextRequest) {
         .eq("id", delProfile.line_last_transaction_id);
 
       if (delError) {
-        await pushToLine(lineUserId, "ลบรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+        await respond(lineUserId, "ลบรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
       } else {
         const { error: snapshotError } = await supabase
           .from("profiles")
@@ -1594,12 +1640,12 @@ export async function POST(req: NextRequest) {
           })
           .eq("id", delProfile.id);
 
-        await pushToLine(
+        await respond(
           lineUserId,
           snapshotError ? "ลบรายการล่าสุดแล้วครับ!" : "ลบรายการล่าสุดแล้วครับ! (พิมพ์ undo เพื่อกู้คืน)"
         );
       }
-      continue;
+      return;
     }
 
     // --- Undo the last delete ---
@@ -1615,8 +1661,8 @@ export async function POST(req: NextRequest) {
         | null;
 
       if (!undoProfile || !deleted) {
-        await pushToLine(lineUserId, "ไม่มีรายการที่ลบล่าสุดให้กู้คืนครับ");
-        continue;
+        await respond(lineUserId, "ไม่มีรายการที่ลบล่าสุดให้กู้คืนครับ");
+        return;
       }
 
       const { data: restored, error: restoreError } = await supabase
@@ -1626,8 +1672,8 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (restoreError || !restored) {
-        await pushToLine(lineUserId, "กู้คืนรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
-        continue;
+        await respond(lineUserId, "กู้คืนรายการไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+        return;
       }
 
       await supabase
@@ -1636,8 +1682,8 @@ export async function POST(req: NextRequest) {
         .eq("id", undoProfile.id);
 
       const txnLabel = deleted.note ? `฿${deleted.amount.toLocaleString()} - ${deleted.category} (${deleted.note})` : `฿${deleted.amount.toLocaleString()} - ${deleted.category}`;
-      await pushToLine(lineUserId, `กู้คืนรายการแล้วครับ: ${txnLabel}`);
-      continue;
+      await respond(lineUserId, `กู้คืนรายการแล้วครับ: ${txnLabel}`);
+      return;
     }
 
     // --- Edit last transaction: one-shot "edit <amount> <category> [note]" or bare "edit" to start a flow ---
@@ -1652,13 +1698,13 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!editProfile?.line_last_transaction_id) {
-        await pushToLine(lineUserId, "ไม่พบรายการล่าสุดสำหรับแก้ไขหรือลบครับ");
-        continue;
+        await respond(lineUserId, "ไม่พบรายการล่าสุดสำหรับแก้ไขหรือลบครับ");
+        return;
       }
 
       if (editArgs) {
         await applyEditToLastTransaction(supabase, lineUserId, editProfile.id, editArgs);
-        continue;
+        return;
       }
 
       // Fetch the transaction to show it
@@ -1669,8 +1715,8 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!txn) {
-        await pushToLine(lineUserId, "ไม่พบรายการล่าสุด ลองใหม่อีกครั้งนะครับ");
-        continue;
+        await respond(lineUserId, "ไม่พบรายการล่าสุด ลองใหม่อีกครั้งนะครับ");
+        return;
       }
 
       const txnLabel = txn.note ? `฿${txn.amount.toLocaleString()} - ${txn.category} (${txn.note})` : `฿${txn.amount.toLocaleString()} - ${txn.category}`;
@@ -1681,11 +1727,11 @@ export async function POST(req: NextRequest) {
 
       if (error) {
         console.log("[edit-flow] failed to save pending state:", error.message);
-        await pushToLine(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+        await respond(lineUserId, "เริ่มขั้นตอนไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
       } else {
-        await pushToLine(lineUserId, `รายการล่าสุด: ${txnLabel}\n\nต้องการแก้ไขยอดเงิน หรือ หมวดหมู่ไหมครับ? สลับที่กันได้ (เช่น 150 food restaurant หรือ food 150 restaurant)\n\nพิมพ์ cc เพื่อยกเลิก`);
+        await respond(lineUserId, `รายการล่าสุด: ${txnLabel}\n\nต้องการแก้ไขยอดเงิน หรือ หมวดหมู่ไหมครับ? สลับที่กันได้ (เช่น 150 food restaurant หรือ food 150 restaurant)\n\nพิมพ์ cc เพื่อยกเลิก`);
       }
-      continue;
+      return;
     }
 
     // --- Note on last transaction: one-shot "note <text>" or bare "note" to start a flow ---
@@ -1700,8 +1746,8 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!noteProfile?.line_last_transaction_id) {
-        await pushToLine(lineUserId, "ไม่พบรายการล่าสุดสำหรับเพิ่ม Note ครับ");
-        continue;
+        await respond(lineUserId, "ไม่พบรายการล่าสุดสำหรับเพิ่ม Note ครับ");
+        return;
       }
 
       if (noteText) {
@@ -1711,23 +1757,23 @@ export async function POST(req: NextRequest) {
           .from("profiles")
           .update({ line_pending_action: "note_step", line_pending_data: null })
           .eq("id", noteProfile.id);
-        await pushToLine(lineUserId, "อยากเพิ่ม Note ว่าอะไรครับ?\n\nพิมพ์ cc เพื่อยกเลิก");
+        await respond(lineUserId, "อยากเพิ่ม Note ว่าอะไรครับ?\n\nพิมพ์ cc เพื่อยกเลิก");
       }
-      continue;
+      return;
     }
 
     // --- Summary commands ---
     if (/^(สรุปรายวัน|รายวัน|daily)$/i.test(text)) {
       await handleSummaryCommand(supabase, lineUserId, "daily");
-      continue;
+      return;
     }
     if (/^(สรุปรายเดือน|รายเดือน|monthly)$/i.test(text)) {
       await handleSummaryCommand(supabase, lineUserId, "monthly");
-      continue;
+      return;
     }
     if (/^(summary|สรุป)$/i.test(text)) {
       await startSummaryMenuFlow(supabase, lineUserId);
-      continue;
+      return;
     }
 
     // --- Show last 5 transactions (chat and OCR both write to the same
@@ -1740,8 +1786,8 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!showProfile) {
-        await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
-        continue;
+        await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+        return;
       }
 
       const { data: recentTxns } = await supabase
@@ -1752,12 +1798,12 @@ export async function POST(req: NextRequest) {
         .limit(5);
 
       if (!recentTxns || recentTxns.length === 0) {
-        await pushToLine(lineUserId, "ยังไม่มีรายการเลยครับ");
-        continue;
+        await respond(lineUserId, "ยังไม่มีรายการเลยครับ");
+        return;
       }
 
-      await pushToLine(lineUserId, buildRecentTransactionsFlex(recentTxns));
-      continue;
+      await respond(lineUserId, buildRecentTransactionsFlex(recentTxns));
+      return;
     }
 
     // --- View all categories ---
@@ -1769,30 +1815,30 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!profile) {
-        await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
-        continue;
+        await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+        return;
       }
 
       await sendCategoryList(supabase, lineUserId, profile.id);
-      continue;
+      return;
     }
 
     // --- Add category guided flow ---
     if (/^cat$/i.test(text)) {
       await startAddCategoryFlow(supabase, lineUserId);
-      continue;
+      return;
     }
 
     // --- Category submenu (Rich Menu "หมวดหมู่" button) ---
     if (/^หมวดหมู่$/i.test(text)) {
       await startCategoryMenuFlow(supabase, lineUserId);
-      continue;
+      return;
     }
 
     // --- Add-rule guided flow (Rich Menu "เพิ่มกฎ" button, or typed directly) ---
     if (/^(เพิ่มกฎ|add rule)$/i.test(text)) {
       await startAddRuleFlow(supabase, lineUserId);
-      continue;
+      return;
     }
 
     // --- Rule creation via chat ---
@@ -1805,8 +1851,8 @@ export async function POST(req: NextRequest) {
       const category = eqIndex >= 0 ? rest.slice(eqIndex + 1).trim() : "";
 
       if (!keyword || !category) {
-        await pushToLine(lineUserId, "รูปแบบไม่ถูกต้องครับ ลองใหม่เป็น: rule chat: ข้าว = food");
-        continue;
+        await respond(lineUserId, "รูปแบบไม่ถูกต้องครับ ลองใหม่เป็น: rule chat: ข้าว = food");
+        return;
       }
 
       const source = sourceRaw.toLowerCase() as "chat" | "slip";
@@ -1819,8 +1865,8 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!ruleProfile) {
-        await pushToLine(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
-        continue;
+        await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+        return;
       }
 
       const { error: ruleError } = await supabase
@@ -1828,11 +1874,11 @@ export async function POST(req: NextRequest) {
         .insert({ user_id: ruleProfile.id, keyword: keyword.toLowerCase(), category, source_type: sourceType });
 
       if (ruleError) {
-        await pushToLine(lineUserId, "บันทึกกฎไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
+        await respond(lineUserId, "บันทึกกฎไม่สำเร็จ ลองใหม่อีกครั้งนะครับ");
       } else {
-        await pushToLine(lineUserId, `บันทึกกฎเรียบร้อย! ถ้าเจอ ${keyword} ใน ${source} จะจัดเป็น ${category} ให้ครับ`);
+        await respond(lineUserId, `บันทึกกฎเรียบร้อย! ถ้าเจอ ${keyword} ใน ${source} จะจัดเป็น ${category} ให้ครับ`);
       }
-      continue;
+      return;
     }
 
     // --- Expense recording ---
@@ -1843,11 +1889,11 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!profile) {
-      await pushToLine(
+      await respond(
         lineUserId,
         "Your LINE account is not linked yet. Open the app → Settings → Connect LINE to link it."
       );
-      continue;
+      return;
     }
 
     const { data: cats } = await supabase
@@ -1858,8 +1904,8 @@ export async function POST(req: NextRequest) {
 
     const parsed = parseTransaction(text, categoryNames);
     if (!parsed) {
-      await pushToLine(lineUserId, randomFormatError());
-      continue;
+      await respond(lineUserId, randomFormatError());
+      return;
     }
 
     // Smart categorization: scan rawText against the user's chat category_rules
@@ -1879,8 +1925,8 @@ export async function POST(req: NextRequest) {
       .select("id");
 
     if (txError) {
-      await pushToLine(lineUserId, "Failed to save. Please try again.");
-      continue;
+      await respond(lineUserId, "Failed to save. Please try again.");
+      return;
     }
 
     // Save the last transaction ID for edit/delete functionality
@@ -1894,8 +1940,5 @@ export async function POST(req: NextRequest) {
 
     const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;
     const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, (profile as Record<string, unknown>).line_last_response as string ?? null);
-    await pushToLine(lineUserId, buildSuccessMessage(personality, parsed.amount, catLabel));
-  }
-
-  return NextResponse.json({ ok: true });
+    await respond(lineUserId, buildSuccessMessage(personality, parsed.amount, catLabel));
 }
