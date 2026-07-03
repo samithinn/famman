@@ -32,10 +32,8 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
       const hours = String(now.getHours()).padStart(2, "0");
       const mins = String(now.getMinutes()).padStart(2, "0");
       const secs = String(now.getSeconds()).padStart(2, "0");
-      // Desktop: full format, Mobile: compact (no seconds)
-      const desktop = `วัน${day}ที่ ${date} ${month} ${year} | ${hours}:${mins}:${secs} น.`;
-      const mobile = `${day}ที่ ${date} ${month} | ${hours}:${mins}`;
-      setCurrentDateTime(`${desktop}~~${mobile}`);
+      const fullDateTime = `วัน${day}ที่ ${date} ${month} ${year} | ${hours}:${mins}:${secs} น.`;
+      setCurrentDateTime(fullDateTime);
     };
     updateDateTime();
     const interval = setInterval(updateDateTime, 1000);
@@ -154,7 +152,7 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
             </div>
           </div>
           <p className="text-xs font-extrabold" style={{ color: "#7c3aed", letterSpacing: "0.3px" }}>
-            {currentDateTime.split("~~")[0]}
+            {currentDateTime[0]}
           </p>
         </div>
 
@@ -164,7 +162,7 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
             Dashboard 🏠
           </h1>
           <p className="text-sm font-extrabold flex-1 text-center whitespace-nowrap" style={{ color: "#7c3aed", letterSpacing: "0.5px" }}>
-            {currentDateTime.split("~~")[0]}
+            {currentDateTime[0]}
           </p>
           <div className="flex items-center gap-2">
             <button
