@@ -159,11 +159,11 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
         </div>
 
         {/* Desktop layout */}
-        <div className="hidden sm:flex items-center justify-between">
+        <div className="hidden sm:flex items-center justify-between gap-4">
           <h1 className="text-lg font-black" style={{ color: "#1f2937", letterSpacing: "-0.5px" }}>
             Dashboard 🏠
           </h1>
-          <p className="text-xs font-extrabold flex-1 text-center" style={{ color: "#7c3aed", letterSpacing: "0.5px" }}>
+          <p className="text-sm font-extrabold flex-1 text-center whitespace-nowrap" style={{ color: "#7c3aed", letterSpacing: "0.5px" }}>
             {currentDateTime.split("|")[0]}
           </p>
           <div className="flex items-center gap-2">
