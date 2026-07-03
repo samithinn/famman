@@ -6,12 +6,13 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, ArrowLeft, CheckCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import AvatarUpload from "@/components/AvatarUpload";
 
 type LineStatus = { linked: boolean };
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [form, setForm] = useState({ full_name: "", dob: "", photo_url: "", first_name: "", last_name: "", phone: "" });
+  const [form, setForm] = useState({ full_name: "", dob: "", photo_url: "", first_name: "", last_name: "", phone: "", photo_offset_x: 0, photo_offset_y: 0 });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -42,6 +43,8 @@ export default function ProfilePage() {
           first_name: profile.first_name || "",
           last_name: profile.last_name || "",
           phone: profile.phone || "",
+          photo_offset_x: profile.photo_offset_x || 0,
+          photo_offset_y: profile.photo_offset_y || 0,
         });
       }
       setLoading(false);
@@ -112,6 +115,8 @@ export default function ProfilePage() {
       first_name: form.first_name || null,
       last_name: form.last_name || null,
       phone: form.phone || null,
+      photo_offset_x: form.photo_offset_x || 0,
+      photo_offset_y: form.photo_offset_y || 0,
       updated_at: new Date().toISOString(),
     });
     setSaving(false);
@@ -149,15 +154,47 @@ export default function ProfilePage() {
         {/* Avatar preview */}
         {form.photo_url && (
           <div className="flex justify-center mb-5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={form.photo_url}
-              alt="Profile"
-              className="w-20 h-20 rounded-full object-cover"
-              style={{ border: "3px solid #e9d5ff", boxShadow: "0 4px 12px rgba(139,92,246,0.2)" }}
-            />
+            <div className="relative w-24 h-24 rounded-full overflow-hidden"
+              style={{ border: "3px solid #e9d5ff", boxShadow: "0 4px 12px rgba(139,92,246,0.2)" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={form.photo_url}
+                alt="Profile"
+                className="w-32 h-32 object-cover absolute"
+                style={{
+                  left: "50%",
+                  top: "50%",
+                  transform: `translate(calc(-50% + ${form.photo_offset_x}px), calc(-50% + ${form.photo_offset_y}px))`,
+                }}
+              />
+            </div>
           </div>
         )}
+
+        {/* Avatar Upload card */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-4">
+          <AvatarUpload
+            currentUrl={form.photo_url}
+            offsetX={form.photo_offset_x}
+            offsetY={form.photo_offset_y}
+            userId={loading ? "" : (userEmail || "")}
+            onUpload={async (url, offsetX, offsetY) => {
+              setForm(prev => ({ ...prev, photo_url: url, photo_offset_x: offsetX, photo_offset_y: offsetY }));
+              setSaving(true);
+              const { data: { user } } = await supabase.auth.getUser();
+              if (user) {
+                await supabase.from("profiles").upsert({
+                  id: user.id,
+                  photo_url: url,
+                  photo_offset_x: offsetX,
+                  photo_offset_y: offsetY,
+                  updated_at: new Date().toISOString(),
+                });
+              }
+              setSaving(false);
+            }}
+          />
+        </div>
 
         {/* Form card */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-4">

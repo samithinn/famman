@@ -18,6 +18,29 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
   const [monthlyBudget, setMonthlyBudget] = useState(0);
   const [currentUser, setCurrentUser] = useState<string>("");
   const [selectedSpender, setSelectedSpender] = useState<string>("current");
+  const [currentDateTime, setCurrentDateTime] = useState("");
+
+  useEffect(() => {
+    const updateDateTime = () => {
+      const now = new Date();
+      const dayNames = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัส", "ศุกร์", "เสาร์"];
+      const monthNames = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+      const day = dayNames[now.getDay()];
+      const date = now.getDate();
+      const month = monthNames[now.getMonth()];
+      const year = now.getFullYear() + 543;
+      const hours = String(now.getHours()).padStart(2, "0");
+      const mins = String(now.getMinutes()).padStart(2, "0");
+      const secs = String(now.getSeconds()).padStart(2, "0");
+      // Desktop: full format, Mobile: compact (no seconds)
+      const desktop = `วัน${day}ที่ ${date} ${month} ${year} | ${hours}:${mins}:${secs} น.`;
+      const mobile = `${day}ที่ ${date} ${month} | ${hours}:${mins}`;
+      setCurrentDateTime(`${desktop}|${mobile}`);
+    };
+    updateDateTime();
+    const interval = setInterval(updateDateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -103,35 +126,63 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
     <div className="flex flex-col h-full">
       {/* Sticky header */}
       <div
-        className="sticky top-0 z-10 bg-white px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+        className="sticky top-0 z-10 bg-white px-5 py-4"
         style={{ borderBottom: "1px solid #f3e8ff" }}
       >
-        <div>
+        {/* Mobile layout */}
+        <div className="sm:hidden space-y-2">
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-black" style={{ color: "#1f2937", letterSpacing: "-0.5px" }}>
+              Dashboard 🏠
+            </h1>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onAddTransaction}
+                className="text-xs font-extrabold px-3 py-1.5 rounded-lg"
+                style={{ border: "2px solid #f9a8d4", color: "#ec4899", background: "#fff" }}
+              >
+                + Add
+              </button>
+              <button
+                onClick={fetchTransactions}
+                disabled={loading}
+                className="p-1.5 rounded-lg"
+                style={{ color: "#9ca3af" }}
+              >
+                <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+              </button>
+            </div>
+          </div>
+          <p className="text-[10px] font-extrabold text-center" style={{ color: "#a78bfa", letterSpacing: "0.3px" }}>
+            {currentDateTime.split("|")[1]}
+          </p>
+        </div>
+
+        {/* Desktop layout */}
+        <div className="hidden sm:flex items-center justify-between">
           <h1 className="text-lg font-black" style={{ color: "#1f2937", letterSpacing: "-0.5px" }}>
             Dashboard 🏠
           </h1>
-          <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>
-            Your current financial snapshot
+          <p className="text-xs font-extrabold flex-1 text-center" style={{ color: "#7c3aed", letterSpacing: "0.5px" }}>
+            {currentDateTime.split("|")[0]}
           </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Add button */}
-          <button
-            onClick={onAddTransaction}
-            className="text-xs font-extrabold px-4 py-2 rounded-xl"
-            style={{ border: "2px solid #f9a8d4", color: "#ec4899", background: "#fff" }}
-          >
-            + Add
-          </button>
-          {/* Refresh */}
-          <button
-            onClick={fetchTransactions}
-            disabled={loading}
-            className="p-2 rounded-xl"
-            style={{ color: "#9ca3af" }}
-          >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onAddTransaction}
+              className="text-xs font-extrabold px-4 py-2 rounded-xl"
+              style={{ border: "2px solid #f9a8d4", color: "#ec4899", background: "#fff" }}
+            >
+              + Add
+            </button>
+            <button
+              onClick={fetchTransactions}
+              disabled={loading}
+              className="p-2 rounded-xl"
+              style={{ color: "#9ca3af" }}
+            >
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+            </button>
+          </div>
         </div>
       </div>
 

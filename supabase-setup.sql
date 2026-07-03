@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   phone text,
   dob date,
   photo_url text,
+  photo_offset_x numeric DEFAULT 0,
+  photo_offset_y numeric DEFAULT 0,
   monthly_budget numeric DEFAULT 0,
   role text NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
   line_user_id text UNIQUE,
@@ -76,6 +78,13 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS line_last_deleted jsonb;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS first_name text;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_name text;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS phone text;
+
+-- Avatar positioning for drag-to-adjust (added for existing installs; the
+-- CREATE TABLE above only applies to a brand-new table). photo_offset_x and
+-- photo_offset_y store the relative position of the image within the circular
+-- avatar preview (in pixels, relative to center). Default 0,0 = centered.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS photo_offset_x numeric DEFAULT 0;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS photo_offset_y numeric DEFAULT 0;
 
 -- Backfill: existing rows predate the column default above and would
 -- otherwise be NULL (i.e. silently stop receiving the push they already
