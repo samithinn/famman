@@ -32,8 +32,7 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
       const hours = String(now.getHours()).padStart(2, "0");
       const mins = String(now.getMinutes()).padStart(2, "0");
       const secs = String(now.getSeconds()).padStart(2, "0");
-      const fullDateTime = `วัน${day}ที่ ${date} ${month} ${year} | ${hours}:${mins}:${secs} น.`;
-      setCurrentDateTime(fullDateTime);
+      setCurrentDateTime("ว");
     };
     updateDateTime();
     const interval = setInterval(updateDateTime, 1000);
