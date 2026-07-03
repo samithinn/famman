@@ -30,78 +30,128 @@ html.dark-mode * {
   color-scheme: dark;
 }
 
+/*
+ * NOTE on selectors below: React serializes inline styles two different ways
+ * depending on render path, and both forms must be matched or the override
+ * silently never fires:
+ *   - Server-rendered / initial-paint nodes: literal hex, no space after the
+ *     colon, e.g. style="color:#1f2937"
+ *   - Nodes whose style is set by a later client-side re-render (e.g. any
+ *     state set inside a useEffect/async fetch) go through the browser's
+ *     CSSOM, which normalizes hex to rgb() and adds a space after the colon,
+ *     e.g. style="color: rgb(31, 41, 55);"
+ * Every rule below has a hex variant (no space) and an rgb variant (space)
+ * for this reason. Verified empirically with Playwright against this app.
+ */
+
 /* Dark mode overrides - All backgrounds go dark */
 html.dark-mode .bg-white {
   background-color: #2d2d42 !important;
 }
 
-html.dark-mode [style*="background: #fff"],
-html.dark-mode [style*="background: #fafafa"],
-html.dark-mode [style*="background: #fdf2f8"],
-html.dark-mode [style*="background: #f0ebff"],
-html.dark-mode [style*="background: #f0fdf4"],
-html.dark-mode [style*="background: #fffbeb"],
-html.dark-mode [style*="background: #fef2f2"],
-html.dark-mode [style*="background: #fee2e2"],
-html.dark-mode [style*="background: #f3e8ff"],
-html.dark-mode [style*="background: #f0fdf4"],
-html.dark-mode [style*="background: #fafafa"] {
+html.dark-mode [style*="background:#fff"],
+html.dark-mode [style*="background: rgb(255, 255, 255)"],
+html.dark-mode [style*="background:#fafafa"],
+html.dark-mode [style*="background: rgb(250, 250, 250)"],
+html.dark-mode [style*="background:#fdf2f8"],
+html.dark-mode [style*="background: rgb(253, 242, 248)"],
+html.dark-mode [style*="background:#f0ebff"],
+html.dark-mode [style*="background: rgb(240, 235, 255)"],
+html.dark-mode [style*="background:#f0fdf4"],
+html.dark-mode [style*="background: rgb(240, 253, 244)"],
+html.dark-mode [style*="background:#fffbeb"],
+html.dark-mode [style*="background: rgb(255, 251, 235)"],
+html.dark-mode [style*="background:#fef2f2"],
+html.dark-mode [style*="background: rgb(254, 242, 242)"],
+html.dark-mode [style*="background:#fee2e2"],
+html.dark-mode [style*="background: rgb(254, 226, 226)"],
+html.dark-mode [style*="background:#f3e8ff"],
+html.dark-mode [style*="background: rgb(243, 232, 255)"] {
   background-color: #252540 !important;
 }
 
 /* Dark mode - All text colors become brighter */
-html.dark-mode [style*="color: #000"],
-html.dark-mode [style*="color: #1f2937"],
-html.dark-mode [style*="color: #374151"],
-html.dark-mode [style*="color: #4b5563"],
-html.dark-mode [style*="color: #6b7280"] {
+html.dark-mode [style*="color:#000"],
+html.dark-mode [style*="color: rgb(0, 0, 0)"],
+html.dark-mode [style*="color:#1f2937"],
+html.dark-mode [style*="color: rgb(31, 41, 55)"],
+html.dark-mode [style*="color:#374151"],
+html.dark-mode [style*="color: rgb(55, 65, 81)"],
+html.dark-mode [style*="color:#4b5563"],
+html.dark-mode [style*="color: rgb(75, 85, 99)"],
+html.dark-mode [style*="color:#6b7280"],
+html.dark-mode [style*="color: rgb(107, 114, 128)"] {
   color: #f0f0f5 !important;
 }
 
-html.dark-mode [style*="color: #9ca3af"] {
+html.dark-mode [style*="color:#9ca3af"],
+html.dark-mode [style*="color: rgb(156, 163, 175)"] {
   color: #d0d0d8 !important;
 }
 
-html.dark-mode [style*="color: #a78bfa"] {
+html.dark-mode [style*="color:#a78bfa"],
+html.dark-mode [style*="color: rgb(167, 139, 250)"] {
   color: #e9d5ff !important;
 }
 
-html.dark-mode [style*="color: #c4b5fd"] {
+html.dark-mode [style*="color:#c4b5fd"],
+html.dark-mode [style*="color: rgb(196, 181, 253)"] {
   color: #f3e8ff !important;
 }
 
-html.dark-mode [style*="color: #7c3aed"] {
+html.dark-mode [style*="color:#7c3aed"],
+html.dark-mode [style*="color: rgb(124, 58, 237)"],
+html.dark-mode [style*="color:#5b21b6"],
+html.dark-mode [style*="color: rgb(91, 33, 182)"],
+html.dark-mode [style*="color:#6d28d9"],
+html.dark-mode [style*="color: rgb(109, 40, 217)"] {
   color: #c4b5fd !important;
 }
 
-html.dark-mode [style*="color: #15803d"] {
+html.dark-mode [style*="color:#15803d"],
+html.dark-mode [style*="color: rgb(21, 128, 61)"] {
   color: #86efac !important;
 }
 
-html.dark-mode [style*="color: #be185d"] {
+html.dark-mode [style*="color:#be185d"],
+html.dark-mode [style*="color: rgb(190, 24, 93)"] {
   color: #fbcfe8 !important;
 }
 
-html.dark-mode [style*="color: #b45309"] {
+html.dark-mode [style*="color:#b45309"],
+html.dark-mode [style*="color: rgb(180, 83, 9)"],
+html.dark-mode [style*="color:#92400e"],
+html.dark-mode [style*="color: rgb(146, 64, 14)"] {
   color: #fcd34d !important;
 }
 
 /* Dark mode - All borders */
 html.dark-mode [style*="border"],
-html.dark-mode [style*="borderColor: #e9d5ff"],
-html.dark-mode [style*="borderColor: #f3e8ff"],
-html.dark-mode [style*="border: 2px solid #f3e8ff"],
-html.dark-mode [style*="border: 1px solid #f3e8ff"],
-html.dark-mode [style*="border: 2px solid #fecaca"],
-html.dark-mode [style*="border: 1px solid #bbf7d0"],
-html.dark-mode [style*="border: 1px solid #fde68a"] {
+html.dark-mode [style*="border-color:#e9d5ff"],
+html.dark-mode [style*="border-color: rgb(233, 213, 255)"],
+html.dark-mode [style*="border-color:#f3e8ff"],
+html.dark-mode [style*="border-color: rgb(243, 232, 255)"],
+html.dark-mode [style*="border:2px solid #f3e8ff"],
+html.dark-mode [style*="border: 2px solid rgb(243, 232, 255)"],
+html.dark-mode [style*="border:1px solid #f3e8ff"],
+html.dark-mode [style*="border: 1px solid rgb(243, 232, 255)"],
+html.dark-mode [style*="border:2px solid #fecaca"],
+html.dark-mode [style*="border: 2px solid rgb(254, 202, 202)"],
+html.dark-mode [style*="border:1px solid #bbf7d0"],
+html.dark-mode [style*="border: 1px solid rgb(187, 247, 208)"],
+html.dark-mode [style*="border:1px solid #fde68a"],
+html.dark-mode [style*="border: 1px solid rgb(253, 230, 138)"] {
   border-color: #3d3d52 !important;
 }
 
-html.dark-mode [style*="borderBottom: 1px solid"],
-html.dark-mode [style*="borderTop: 1px solid"],
-html.dark-mode [style*="borderRight: 1px solid"],
-html.dark-mode [style*="borderLeft: 1px solid"] {
+html.dark-mode [style*="border-bottom:1px solid"],
+html.dark-mode [style*="border-bottom: 1px solid"],
+html.dark-mode [style*="border-top:1px solid"],
+html.dark-mode [style*="border-top: 1px solid"],
+html.dark-mode [style*="border-right:1px solid"],
+html.dark-mode [style*="border-right: 1px solid"],
+html.dark-mode [style*="border-left:1px solid"],
+html.dark-mode [style*="border-left: 1px solid"] {
   border-color: #3d3d52 !important;
 }
 
@@ -109,7 +159,9 @@ html.dark-mode [style*="borderLeft: 1px solid"] {
 html.dark-mode input,
 html.dark-mode textarea,
 html.dark-mode select,
-html.dark-mode button[style*="background: #f3e8ff"],
+html.dark-mode button[style*="background:#f3e8ff"],
+html.dark-mode button[style*="background: rgb(243, 232, 255)"],
+html.dark-mode button[style*="border:2px solid"],
 html.dark-mode button[style*="border: 2px solid"] {
   background-color: #252540 !important;
   color: #f5f5f7 !important;
@@ -117,7 +169,8 @@ html.dark-mode button[style*="border: 2px solid"] {
 }
 
 /* Dark mode - Gradients stay but text becomes bright */
-html.dark-mode [style*="color: rgba(255,255,255"] {
+html.dark-mode [style*="color:rgba(255,255,255"],
+html.dark-mode [style*="color: rgba(255, 255, 255"] {
   color: rgba(245, 245, 247, 0.9) !important;
 }
 
