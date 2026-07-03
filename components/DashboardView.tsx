@@ -130,7 +130,7 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
         style={{ borderBottom: "1px solid #f3e8ff" }}
       >
         {/* Mobile layout */}
-        <div className="sm:hidden space-y-2">
+        <div className="sm:hidden space-y-1.5">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-black" style={{ color: "#1f2937", letterSpacing: "-0.5px" }}>
               Dashboard 🏠
@@ -153,8 +153,8 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
               </button>
             </div>
           </div>
-          <p className="text-[10px] font-extrabold text-center" style={{ color: "#a78bfa", letterSpacing: "0.3px" }}>
-            {currentDateTime.split("|")[1]}
+          <p className="text-xs font-extrabold" style={{ color: "#7c3aed", letterSpacing: "0.3px" }}>
+            {currentDateTime.split("|")[0]}
           </p>
         </div>
 
