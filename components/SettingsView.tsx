@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User, MessageSquare, Zap, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PullToRefresh from "./PullToRefresh";
+import ThemeToggle from "./ThemeToggle";
 
 type CatType = "expense" | "income";
 type Category = { id: string; name: string; type: CatType };
@@ -1193,6 +1194,11 @@ export default function SettingsView() {
           )}
           </div>
           )}
+        </div>
+
+        {/* Theme Toggle */}
+        <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+          <ThemeToggle />
         </div>
 
         {/* LINE Connect */}

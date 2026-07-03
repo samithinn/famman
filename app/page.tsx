@@ -11,6 +11,7 @@ import TransactionsView from "@/components/TransactionsView";
 import AddTransactionModal from "@/components/AddTransactionModal";
 import { Transaction } from "@/lib/supabase";
 import SettingsView from "@/components/SettingsView";
+import { ThemeProvider } from "@/lib/ThemeContext";
 
 const BOTTOM_NAV: { label: string; view: View; icon: string }[] = [
   { label: "Home",    view: "dashboard",    icon: "🏠" },
@@ -107,8 +108,10 @@ function HomeContent() {
 
 export default function Home() {
   return (
-    <Suspense fallback={null}>
-      <HomeContent />
-    </Suspense>
+    <ThemeProvider>
+      <Suspense fallback={null}>
+        <HomeContent />
+      </Suspense>
+    </ThemeProvider>
   );
 }

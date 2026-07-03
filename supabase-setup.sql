@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   photo_url text,
   photo_offset_x numeric DEFAULT 0,
   photo_offset_y numeric DEFAULT 0,
+  theme_preference text DEFAULT 'system' CHECK (theme_preference IN ('system', 'dark', 'light')),
   monthly_budget numeric DEFAULT 0,
   role text NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
   line_user_id text UNIQUE,
@@ -85,6 +86,11 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS phone text;
 -- avatar preview (in pixels, relative to center). Default 0,0 = centered.
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS photo_offset_x numeric DEFAULT 0;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS photo_offset_y numeric DEFAULT 0;
+
+-- Theme preference (added for existing installs; the CREATE TABLE above only
+-- applies to a brand-new table). Allows users to select 'system' (follow device
+-- preference), 'dark', or 'light' mode. Defaults to 'system'.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS theme_preference text DEFAULT 'system';
 
 -- Backfill: existing rows predate the column default above and would
 -- otherwise be NULL (i.e. silently stop receiving the push they already

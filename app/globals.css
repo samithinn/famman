@@ -5,6 +5,79 @@
 body {
   background-color: #fdf2f8;
   font-family: 'Nunito', sans-serif;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* Dark mode - Soft pastel palette */
+html.dark-mode {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #252540;
+  --bg-card: #2d2d42;
+  --bg-hover: #35354a;
+  --text-primary: #f5f5f7;
+  --text-secondary: #c9c9d1;
+  --text-muted: #8b8b96;
+  --border-color: #3d3d52;
+}
+
+html.dark-mode body {
+  background-color: #1a1a2e;
+  color: #f5f5f7;
+}
+
+html.dark-mode,
+html.dark-mode * {
+  color-scheme: dark;
+}
+
+/* Dark mode overrides */
+html.dark-mode .bg-white {
+  background-color: #2d2d42 !important;
+}
+
+html.dark-mode [style*="background: #fafafa"] {
+  background-color: #252540 !important;
+}
+
+html.dark-mode [style*="background: #fdf2f8"],
+html.dark-mode [style*="background: #f0ebff"],
+html.dark-mode [style*="background: #f0fdf4"],
+html.dark-mode [style*="background: #fffbeb"],
+html.dark-mode [style*="background: #fef2f2"],
+html.dark-mode [style*="background: #f3e8ff"] {
+  background-color: #252540 !important;
+}
+
+html.dark-mode [style*="color: #1f2937"],
+html.dark-mode [style*="color: #374151"],
+html.dark-mode [style*="color: #6b7280"] {
+  color: #e8e8ed !important;
+}
+
+html.dark-mode [style*="color: #9ca3af"] {
+  color: #a0a0ac !important;
+}
+
+html.dark-mode [style*="borderColor: #f3e8ff"],
+html.dark-mode [style*="border: 2px solid #f3e8ff"],
+html.dark-mode [style*="border: 1px solid #f3e8ff"] {
+  border-color: #3d3d52 !important;
+}
+
+html.dark-mode [style*="borderBottom: 1px solid #f3e8ff"] {
+  border-bottom-color: #3d3d52 !important;
+}
+
+html.dark-mode [style*="borderTop: 1px solid"] {
+  border-top-color: #3d3d52 !important;
+}
+
+html.dark-mode input,
+html.dark-mode textarea,
+html.dark-mode select {
+  background-color: #252540 !important;
+  color: #f5f5f7 !important;
+  border-color: #3d3d52 !important;
 }
 
 /* Scrollbar */
