@@ -35,7 +35,7 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
       // Desktop: full format, Mobile: compact (no seconds)
       const desktop = `วัน${day}ที่ ${date} ${month} ${year} | ${hours}:${mins}:${secs} น.`;
       const mobile = `${day}ที่ ${date} ${month} | ${hours}:${mins}`;
-      setCurrentDateTime(`${desktop}|${mobile}`);
+      setCurrentDateTime(`${desktop}~~${mobile}`);
     };
     updateDateTime();
     const interval = setInterval(updateDateTime, 1000);
@@ -154,7 +154,7 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
             </div>
           </div>
           <p className="text-xs font-extrabold" style={{ color: "#7c3aed", letterSpacing: "0.3px" }}>
-            {currentDateTime.split("|")[0]}
+            {currentDateTime.split("~~")[0]}
           </p>
         </div>
 
@@ -164,7 +164,7 @@ export default function DashboardView({ newTransaction, onAddTransaction }: Dash
             Dashboard 🏠
           </h1>
           <p className="text-sm font-extrabold flex-1 text-center whitespace-nowrap" style={{ color: "#7c3aed", letterSpacing: "0.5px" }}>
-            {currentDateTime.split("|")[0]}
+            {currentDateTime.split("~~")[0]}
           </p>
           <div className="flex items-center gap-2">
             <button
