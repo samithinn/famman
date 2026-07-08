@@ -9,6 +9,7 @@ import { supabase, Transaction } from "@/lib/supabase";
 import SpendingChart from "./SpendingChart";
 import RecentTransactions from "./RecentTransactions";
 import PullToRefresh from "./PullToRefresh";
+import CategoryDropdown, { ALL_CATEGORIES } from "./CategoryDropdown";
 
 const PIE_COLORS = [
   "#a78bfa", "#f9a8d4", "#6ee7b7", "#fcd34d", "#93c5fd",
@@ -86,6 +87,7 @@ export default function Report({ newTransaction }: ReportProps) {
   const [selectedDate, setSelectedDate] = useState(() => toLocalDateStr(new Date()));
   const [currentUser, setCurrentUser] = useState<string>("");
   const [selectedSpender, setSelectedSpender] = useState("current");
+  const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES);
 
   // Only default the filter to "current" on the very first load — later
   // refreshes (e.g. pull-to-refresh) should preserve whatever the user picked.
@@ -124,11 +126,14 @@ export default function Report({ newTransaction }: ReportProps) {
     selectedSpender === "all" ? transactions :
     selectedSpender === "current" ? transactions.filter((t) => t.spender === currentUser) :
     transactions.filter((t) => t.spender === selectedSpender);
+  const categoryFiltered =
+    selectedCategory === ALL_CATEGORIES ? spenderFiltered :
+    spenderFiltered.filter((t) => t.category.toLowerCase() === selectedCategory.toLowerCase());
   const localDate = (iso: string) => {
     const d = new Date(iso);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
-  const monthlyTx = spenderFiltered.filter((t) => localDate(t.date).startsWith(selectedMonth));
+  const monthlyTx = categoryFiltered.filter((t) => localDate(t.date).startsWith(selectedMonth));
 
   const monthlyExpenses = monthlyTx.filter((t) => (t.type ?? "expense") === "expense");
   const monthlyIncome = monthlyTx.filter((t) => t.type === "income");
@@ -138,7 +143,7 @@ export default function Report({ newTransaction }: ReportProps) {
   const pieData = buildPieData(monthlyExpenses);
   const monthLabel = months.find((m) => m.value === selectedMonth)?.label ?? selectedMonth;
 
-  const dailyTx = spenderFiltered.filter((t) => localDate(t.date) === selectedDate);
+  const dailyTx = categoryFiltered.filter((t) => localDate(t.date) === selectedDate);
   const dailyExpenses = dailyTx.filter((t) => (t.type ?? "expense") === "expense");
   const dailyIncome = dailyTx.filter((t) => t.type === "income");
   const totalExpensesDaily = dailyExpenses.reduce((s, t) => s + t.amount, 0);
@@ -228,6 +233,8 @@ export default function Report({ newTransaction }: ReportProps) {
             ))}
             <option value="all">All spenders</option>
           </select>
+          {/* Category filter */}
+          <CategoryDropdown value={selectedCategory} onChange={setSelectedCategory} />
           {/* Export CSV */}
           <button
             onClick={() => exportCSV(activeTx, isDaily ? selectedDate : selectedMonth)}
@@ -332,7 +339,7 @@ export default function Report({ newTransaction }: ReportProps) {
               <span className="loading loading-spinner loading-md" style={{ color: "#a78bfa" }} />
             </div>
           ) : (
-            <SpendingChart transactions={spenderFiltered} mode={isDaily ? "daily" : "monthly"} />
+            <SpendingChart transactions={categoryFiltered} mode={isDaily ? "daily" : "monthly"} />
           )}
         </div>
 

@@ -232,6 +232,38 @@ CREATE POLICY "users manage own category rules"
   USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- ------------------------------------------------------------
+-- Subscriptions (recurring monthly expenses). Web-only CRUD
+-- (Settings UI); the daily cron (chargeSubscriptions() in
+-- app/api/cron/line-daily-push/route.ts) auto-inserts a real
+-- transactions row once a month on billing_day, clamped to the
+-- last day of the month for short months (e.g. day 31 -> Feb 28/29).
+-- last_charged_month ('YYYY-MM', Asia/Bangkok) is the idempotency
+-- guard so a cron retry/redeploy never double-charges. category is
+-- free text, matching the category_rules.category convention (not
+-- FK'd to categories.id).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  amount numeric NOT NULL CHECK (amount > 0),
+  billing_day int NOT NULL CHECK (billing_day BETWEEN 1 AND 31),
+  category text NOT NULL,
+  payment_method text NOT NULL DEFAULT 'Cash' CHECK (payment_method IN ('Cash', 'Credit Card')),
+  active boolean NOT NULL DEFAULT true,
+  last_charged_month text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users manage own subscriptions" ON subscriptions;
+CREATE POLICY "users manage own subscriptions"
+  ON subscriptions FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- ------------------------------------------------------------
 -- LINE bot reply text, split by category and transaction type.
 -- No RLS — only ever accessed via the service-role key
 -- (the webhook and /api/admin/line-responses route).

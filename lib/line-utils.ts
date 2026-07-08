@@ -154,7 +154,7 @@ export async function buildMonthlySummary(
 // runs functions with TZ=UTC, so a naive `.toISOString()` calendar date is
 // wrong for ~7 hours a day (Bangkok is UTC+7). Matters once the daily push
 // can fire at any user-chosen time, not just the old fixed 22:00 ICT.
-function bangkokDateStr(date: Date): string {
+export function bangkokDateStr(date: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(date);
 }
 
@@ -635,6 +635,71 @@ export function buildRecentTransactionsFlex(items: RecentTransactionItem[]): Lin
       ],
     };
   }
+
+  return { type: "flex", altText, contents };
+}
+
+export interface SubscriptionListItem {
+  name: string;
+  amount: number;
+  billing_day: number;
+}
+
+// "sub" command: active (non-paused) subscriptions, read-only, with a
+// total monthly sum footer row.
+export function buildSubscriptionsFlex(items: SubscriptionListItem[], total: number): LineMessagePayload {
+  const altText = `🔁 Subscriptions: ${items.length} รายการ`;
+
+  const body: FlexComponent[] = [];
+  items.forEach((item, i) => {
+    if (i > 0) body.push({ type: "separator", margin: "md", color: PASTEL.separator });
+    body.push({
+      type: "box",
+      layout: "horizontal",
+      margin: i === 0 ? "none" : "md",
+      contents: [
+        {
+          type: "box",
+          layout: "vertical",
+          flex: 3,
+          contents: [
+            { type: "text", text: item.name, size: "sm", weight: "bold", color: PASTEL.textBody, wrap: true },
+            { type: "text", text: `ทุกวันที่ ${item.billing_day} ของเดือน`, size: "xs", color: PASTEL.textMuted, margin: "xs" },
+          ],
+        },
+        {
+          type: "text",
+          text: fmt(item.amount),
+          size: "sm",
+          weight: "bold",
+          align: "end",
+          gravity: "center",
+          color: PASTEL.expense,
+          flex: 2,
+        },
+      ],
+    });
+  });
+
+  body.push({ type: "separator", margin: "lg", color: PASTEL.separator });
+  body.push(amountRow("รวมต่อเดือน", fmt(total), PASTEL.expense));
+
+  const contents: FlexComponent = {
+    type: "bubble",
+    header: {
+      type: "box",
+      layout: "vertical",
+      background: HERO_GRADIENT,
+      paddingAll: "20px",
+      contents: [{ type: "text", text: "🔁 Subscriptions", size: "xl", weight: "bold", color: "#FFFFFF" }],
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "20px",
+      contents: body,
+    },
+  };
 
   return { type: "flex", altText, contents };
 }

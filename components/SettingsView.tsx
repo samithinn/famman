@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User, MessageSquare, Zap, ChevronDown } from "lucide-react";
+import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User, MessageSquare, Zap, ChevronDown, Pause, Play, Repeat } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PullToRefresh from "./PullToRefresh";
 import ThemeToggle from "./ThemeToggle";
@@ -12,6 +12,12 @@ type Role = "admin" | "user";
 type UserEntry = { id: string; email: string; full_name: string; role: Role };
 type ResponseType = "income" | "expense";
 type LineResponse = { id: string; category: string; response_text: string; type: ResponseType };
+type SubPaymentMethod = "Cash" | "Credit Card";
+type Subscription = {
+  id: string; name: string; amount: number; billing_day: number;
+  category: string; payment_method: SubPaymentMethod; active: boolean;
+  last_charged_month: string | null;
+};
 
 export default function SettingsView() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -61,6 +67,25 @@ export default function SettingsView() {
   const [addingRule, setAddingRule] = useState(false);
   const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
 
+  // Subscriptions (recurring monthly expenses)
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [subsLoading, setSubsLoading] = useState(true);
+  const [subsError, setSubsError] = useState("");
+  const [newSubName, setNewSubName] = useState("");
+  const [newSubAmount, setNewSubAmount] = useState("");
+  const [newSubDay, setNewSubDay] = useState("1");
+  const [newSubCategory, setNewSubCategory] = useState("");
+  const [newSubPaymentMethod, setNewSubPaymentMethod] = useState<SubPaymentMethod>("Cash");
+  const [addingSub, setAddingSub] = useState(false);
+  const [editingSubId, setEditingSubId] = useState<string | null>(null);
+  const [editSubName, setEditSubName] = useState("");
+  const [editSubAmount, setEditSubAmount] = useState("");
+  const [editSubDay, setEditSubDay] = useState("1");
+  const [editSubCategory, setEditSubCategory] = useState("");
+  const [editSubPaymentMethod, setEditSubPaymentMethod] = useState<SubPaymentMethod>("Cash");
+  const [deletingSubId, setDeletingSubId] = useState<string | null>(null);
+  const [togglingSubId, setTogglingSubId] = useState<string | null>(null);
+
   // Admin: LINE bot responses
   const [lineResponses, setLineResponses] = useState<LineResponse[]>([]);
   const [lineRespLoading, setLineRespLoading] = useState(false);
@@ -90,15 +115,17 @@ export default function SettingsView() {
   const [personalityOpen, setPersonalityOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [helpMessageOpen, setHelpMessageOpen] = useState(false);
+  const [subsOpen, setSubsOpen] = useState(false);
 
   useEffect(() => {
     fetchProfile();
     fetchCategories();
     fetchLineStatus();
     fetchCategoryRules();
+    fetchSubscriptions();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const refreshAll = () => Promise.all([fetchProfile(), fetchCategories(), fetchLineStatus(), fetchCategoryRules()]);
+  const refreshAll = () => Promise.all([fetchProfile(), fetchCategories(), fetchLineStatus(), fetchCategoryRules(), fetchSubscriptions()]);
 
   async function fetchProfile() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -267,6 +294,107 @@ export default function SettingsView() {
     }
     setRules(prev => prev.filter(r => r.id !== id));
     setDeletingRuleId(null);
+  }
+
+  async function fetchSubscriptions() {
+    setSubsLoading(true);
+    setSubsError("");
+    const res = await fetch("/api/subscriptions");
+    if (!res.ok) { setSubsError("Failed to load subscriptions."); setSubsLoading(false); return; }
+    const { subscriptions: list } = await res.json();
+    setSubscriptions(list);
+    setSubsLoading(false);
+  }
+
+  async function addSubscription() {
+    const name = newSubName.trim();
+    const amount = parseFloat(newSubAmount);
+    const billingDay = parseInt(newSubDay, 10);
+    const category = newSubCategory;
+    if (!name || !isFinite(amount) || amount <= 0 || !category) return;
+    setAddingSub(true);
+    setSubsError("");
+    const res = await fetch("/api/subscriptions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, amount, billing_day: billingDay, category, payment_method: newSubPaymentMethod }),
+    });
+    if (!res.ok) {
+      const body = await res.json();
+      setSubsError(body.error ?? "Failed to add subscription.");
+      setAddingSub(false);
+      return;
+    }
+    const { subscription } = await res.json();
+    setSubscriptions(prev => [...prev, subscription].sort((a, b) => a.billing_day - b.billing_day));
+    setNewSubName("");
+    setNewSubAmount("");
+    setNewSubDay("1");
+    setNewSubCategory("");
+    setNewSubPaymentMethod("Cash");
+    setAddingSub(false);
+  }
+
+  async function saveSubEdit(id: string) {
+    const name = editSubName.trim();
+    const amount = parseFloat(editSubAmount);
+    const billingDay = parseInt(editSubDay, 10);
+    const category = editSubCategory;
+    if (!name || !isFinite(amount) || amount <= 0 || !category) return;
+    setSubsError("");
+    const current = subscriptions.find(s => s.id === id);
+    const res = await fetch(`/api/subscriptions/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name, amount, billing_day: billingDay, category,
+        payment_method: editSubPaymentMethod, active: current?.active ?? true,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json();
+      setSubsError(body.error ?? "Failed to update subscription.");
+      return;
+    }
+    const { subscription } = await res.json();
+    setSubscriptions(prev => prev.map(s => s.id === id ? subscription : s).sort((a, b) => a.billing_day - b.billing_day));
+    setEditingSubId(null);
+  }
+
+  async function toggleSubActive(sub: Subscription) {
+    setTogglingSubId(sub.id);
+    setSubsError("");
+    const res = await fetch(`/api/subscriptions/${sub.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: sub.name, amount: sub.amount, billing_day: sub.billing_day,
+        category: sub.category, payment_method: sub.payment_method, active: !sub.active,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json();
+      setSubsError(body.error ?? "Failed to update subscription.");
+      setTogglingSubId(null);
+      return;
+    }
+    const { subscription } = await res.json();
+    setSubscriptions(prev => prev.map(s => s.id === sub.id ? subscription : s));
+    setTogglingSubId(null);
+  }
+
+  async function deleteSubscription(id: string) {
+    setDeletingSubId(id);
+    setSubsError("");
+    const res = await fetch(`/api/subscriptions/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json();
+      setSubsError(body.error ?? "Failed to delete subscription.");
+      setDeletingSubId(null);
+      return;
+    }
+    setSubscriptions(prev => prev.filter(s => s.id !== id));
+    setDeletingSubId(null);
   }
 
   async function addCategory(type: CatType) {
@@ -1188,6 +1316,260 @@ export default function SettingsView() {
                       ? <Loader2 size={13} className="animate-spin" />
                       : <Trash2 size={13} />}
                   </button>
+                </div>
+              ))}
+            </div>
+          )}
+          </div>
+          )}
+        </div>
+
+        {/* Subscriptions (recurring monthly expenses) */}
+        <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+          <button onClick={() => setSubsOpen(o => !o)} className="w-full flex items-center justify-between p-5 text-left">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Repeat size={15} style={{ color: "#8b5cf6" }} />
+                <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>
+                  Subscriptions <span className="font-semibold" style={{ color: "#9ca3af" }}>({subscriptions.length})</span>
+                </h2>
+              </div>
+              <p className="text-xs font-semibold" style={{ color: "#9ca3af" }}>
+                Recurring monthly expenses — auto-added on their billing day each month.
+              </p>
+            </div>
+            <ChevronDown
+              size={16}
+              className="flex-shrink-0"
+              style={{ color: "#9ca3af", transform: subsOpen ? "none" : "rotate(-90deg)", transition: "transform 0.15s" }}
+            />
+          </button>
+          {subsOpen && (
+          <div className="px-5 pb-5">
+
+          {/* Add new */}
+          <div className="space-y-2 mb-4">
+            <input
+              type="text"
+              placeholder="Name (e.g. Netflix)"
+              value={newSubName}
+              onChange={e => setNewSubName(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
+              style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+            />
+            <div className="flex gap-2">
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="Amount (฿)"
+                value={newSubAmount}
+                onChange={e => setNewSubAmount(e.target.value)}
+                className="flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
+                style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+              />
+              <select
+                value={newSubDay}
+                onChange={e => setNewSubDay(e.target.value)}
+                className="w-24 rounded-xl px-2 py-2.5 text-sm font-semibold outline-none cursor-pointer"
+                style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+              >
+                {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                  <option key={d} value={d}>Day {d}</option>
+                ))}
+              </select>
+            </div>
+            <select
+              value={newSubCategory}
+              onChange={e => setNewSubCategory(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none cursor-pointer"
+              style={{ border: "2px solid #f3e8ff", color: newSubCategory ? "#374151" : "#9ca3af", fontFamily: "Nunito" }}
+            >
+              <option value="">Category…</option>
+              {categories.filter(c => c.type === "expense").map(c => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+            <div className="flex rounded-xl overflow-hidden" style={{ border: "2px solid #f3e8ff" }}>
+              {(["Cash", "Credit Card"] as SubPaymentMethod[]).map(pm => (
+                <button
+                  key={pm}
+                  type="button"
+                  onClick={() => setNewSubPaymentMethod(pm)}
+                  className="flex-1 py-2 text-xs font-extrabold transition-all"
+                  style={
+                    newSubPaymentMethod === pm
+                      ? { background: "linear-gradient(135deg, #ec4899, #8b5cf6)", color: "#fff" }
+                      : { color: "#7c3aed", background: "transparent" }
+                  }
+                >
+                  {pm === "Cash" ? "💵 Cash" : "💳 Credit Card"}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={addSubscription}
+              disabled={addingSub || !newSubName.trim() || !newSubAmount || !newSubCategory}
+              className="w-full py-2.5 rounded-xl text-sm font-extrabold text-white flex items-center justify-center gap-1.5"
+              style={{
+                background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
+                opacity: addingSub || !newSubName.trim() || !newSubAmount || !newSubCategory ? 0.5 : 1,
+              }}
+            >
+              {addingSub ? <Loader2 size={14} className="animate-spin" /> : <><Plus size={14} /> Add Subscription</>}
+            </button>
+          </div>
+
+          {subsError && (
+            <p className="text-xs font-semibold px-3 py-2 rounded-xl mb-3" style={{ background: "#fef2f2", color: "#ef4444" }}>
+              {subsError}
+            </p>
+          )}
+
+          {subsLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 size={20} className="animate-spin" style={{ color: "#a78bfa" }} />
+            </div>
+          ) : subscriptions.length === 0 ? (
+            <p className="text-xs font-semibold text-center py-4" style={{ color: "#9ca3af" }}>
+              No subscriptions yet. Add one above to auto-track a recurring expense.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {subscriptions.map(sub => (
+                <div
+                  key={sub.id}
+                  className="rounded-xl px-3 py-2.5"
+                  style={{ background: "#fafafa", border: "1px solid #f3e8ff" }}
+                >
+                  {editingSubId === sub.id ? (
+                    <div className="space-y-2">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editSubName}
+                        onChange={e => setEditSubName(e.target.value)}
+                        className="w-full rounded-lg px-2 py-1.5 text-sm font-semibold outline-none"
+                        style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={editSubAmount}
+                          onChange={e => setEditSubAmount(e.target.value)}
+                          className="flex-1 rounded-lg px-2 py-1.5 text-sm font-semibold outline-none"
+                          style={{ border: "2px solid #f3e8ff", color: "#374151" }}
+                        />
+                        <select
+                          value={editSubDay}
+                          onChange={e => setEditSubDay(e.target.value)}
+                          className="w-20 rounded-lg px-1 py-1.5 text-xs font-semibold outline-none cursor-pointer"
+                          style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+                        >
+                          {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                            <option key={d} value={d}>Day {d}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <select
+                        value={editSubCategory}
+                        onChange={e => setEditSubCategory(e.target.value)}
+                        className="w-full rounded-lg px-2 py-1.5 text-xs font-semibold outline-none cursor-pointer"
+                        style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+                      >
+                        {categories.filter(c => c.type === "expense").map(c => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+                      <div className="flex rounded-lg overflow-hidden" style={{ border: "2px solid #f3e8ff" }}>
+                        {(["Cash", "Credit Card"] as SubPaymentMethod[]).map(pm => (
+                          <button
+                            key={pm}
+                            type="button"
+                            onClick={() => setEditSubPaymentMethod(pm)}
+                            className="flex-1 py-1.5 text-xs font-extrabold transition-all"
+                            style={
+                              editSubPaymentMethod === pm
+                                ? { background: "linear-gradient(135deg, #ec4899, #8b5cf6)", color: "#fff" }
+                                : { color: "#7c3aed", background: "transparent" }
+                            }
+                          >
+                            {pm === "Cash" ? "💵 Cash" : "💳 Card"}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex justify-end gap-1">
+                        <button onClick={() => saveSubEdit(sub.id)} className="p-1.5 rounded-lg" style={{ color: "#10b981" }}>
+                          <Check size={14} />
+                        </button>
+                        <button onClick={() => setEditingSubId(null)} className="p-1.5 rounded-lg" style={{ color: "#9ca3af" }}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-extrabold" style={{ color: "#374151" }}>{sub.name}</span>
+                          <span
+                            className="text-xs font-extrabold px-2 py-0.5 rounded-full flex-shrink-0"
+                            style={{ background: "#f3e8ff", color: "#7c3aed" }}
+                          >
+                            Day {sub.billing_day}
+                          </span>
+                          <span
+                            className="text-xs font-extrabold px-2 py-0.5 rounded-full flex-shrink-0"
+                            style={sub.active
+                              ? { background: "#f0fdf4", color: "#15803d" }
+                              : { background: "#f3f4f6", color: "#9ca3af" }}
+                          >
+                            {sub.active ? "Active" : "Paused"}
+                          </span>
+                        </div>
+                        <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>
+                          ฿{sub.amount.toFixed(2)} · {sub.category} · {sub.payment_method === "Cash" ? "💵 Cash" : "💳 Credit Card"}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEditingSubId(sub.id);
+                          setEditSubName(sub.name);
+                          setEditSubAmount(String(sub.amount));
+                          setEditSubDay(String(sub.billing_day));
+                          setEditSubCategory(sub.category);
+                          setEditSubPaymentMethod(sub.payment_method);
+                          setSubsError("");
+                        }}
+                        className="p-1 rounded-lg flex-shrink-0"
+                        style={{ color: "#7c3aed" }}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => toggleSubActive(sub)}
+                        disabled={togglingSubId === sub.id}
+                        className="p-1 rounded-lg flex-shrink-0"
+                        style={{ color: sub.active ? "#d97706" : "#10b981" }}
+                      >
+                        {togglingSubId === sub.id
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : sub.active ? <Pause size={13} /> : <Play size={13} />}
+                      </button>
+                      <button
+                        onClick={() => deleteSubscription(sub.id)}
+                        disabled={deletingSubId === sub.id}
+                        className="p-1 rounded-lg flex-shrink-0"
+                        style={{ color: "#ef4444" }}
+                      >
+                        {deletingSubId === sub.id
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : <Trash2 size={13} />}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

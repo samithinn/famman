@@ -6,6 +6,16 @@ import { supabase, Transaction } from "@/lib/supabase";
 import RecentTransactions from "./RecentTransactions";
 import EditTransactionModal from "./EditTransactionModal";
 import PullToRefresh from "./PullToRefresh";
+import CategoryDropdown, { ALL_CATEGORIES } from "./CategoryDropdown";
+
+function toLocalDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function localDate(iso: string) {
+  const d = new Date(iso);
+  return toLocalDateStr(d);
+}
 
 function exportCSV(transactions: Transaction[], spender?: string) {
   const headers = ["id", "date", "amount", "category", "note", "spender", "created_at"];
@@ -38,6 +48,16 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
   const [search, setSearch] = useState("");
   const [currentUser, setCurrentUser] = useState<string>("");
   const [selectedSpender, setSelectedSpender] = useState<string>("current");
+  const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES);
+
+  const now = new Date();
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), i, 1);
+    return { value: `${now.getFullYear()}-${String(i + 1).padStart(2, "0")}`, label: d.toLocaleDateString("en-US", { month: "long", year: "numeric" }) };
+  });
+  const [reportMode, setReportMode] = useState<"all" | "monthly" | "daily">("all");
+  const [selectedMonth, setSelectedMonth] = useState(months[now.getMonth()].value);
+  const [selectedDate, setSelectedDate] = useState(() => toLocalDateStr(new Date()));
 
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
@@ -101,20 +121,40 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
     .filter((spender) => spender !== currentUser)
     .sort();
 
-  // Apply both spender and search filters
+  // Apply spender, category, and search filters
   const filtered = transactions.filter((t) => {
     const spenderMatch =
       selectedSpender === "all" ||
       (selectedSpender === "current" && t.spender === currentUser) ||
       (selectedSpender !== "current" && selectedSpender !== "all" && t.spender === selectedSpender);
 
+    const categoryMatch =
+      selectedCategory === ALL_CATEGORIES || t.category.toLowerCase() === selectedCategory.toLowerCase();
+
     const searchMatch =
       !search ||
       t.note?.toLowerCase().includes(search.toLowerCase()) ||
       t.category.toLowerCase().includes(search.toLowerCase());
 
-    return spenderMatch && searchMatch;
+    return spenderMatch && categoryMatch && searchMatch;
   });
+
+  // Narrow further only when an explicit Month or Day period is picked; "All" leaves it unfiltered
+  const isDaily = reportMode === "daily";
+  const isMonthly = reportMode === "monthly";
+  const periodTx = filtered.filter((t) => {
+    if (isDaily) return localDate(t.date) === selectedDate;
+    if (isMonthly) return localDate(t.date).startsWith(selectedMonth);
+    return true;
+  });
+  const periodExpenses = periodTx.filter((t) => (t.type ?? "expense") === "expense");
+  const periodIncome = periodTx.filter((t) => t.type === "income");
+  const periodTotalExpenses = periodExpenses.reduce((s, t) => s + t.amount, 0);
+  const periodTotalIncome = periodIncome.reduce((s, t) => s + t.amount, 0);
+  const monthLabel = months.find((m) => m.value === selectedMonth)?.label ?? selectedMonth;
+  const dailyLabel = new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const periodLabel = isDaily ? dailyLabel : isMonthly ? monthLabel : "All Time";
+  const summaryTitle = isDaily ? "Daily Total" : isMonthly ? "Monthly Total" : "All-Time Total";
 
   return (
     <div className="flex flex-col h-full">
@@ -126,10 +166,67 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
         <div>
           <h1 className="text-lg font-black" style={{ color: "#1f2937" }}>Transactions 💳</h1>
           <p className="text-xs font-semibold mt-0.5" style={{ color: "#9ca3af" }}>
-            {filtered.length} records
+            {periodLabel} · {periodTx.length} records
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* All / Monthly / Daily toggle */}
+          <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: "#fafafa", border: "2px solid #f3e8ff" }}>
+            <button
+              onClick={() => setReportMode("all")}
+              className="text-xs font-extrabold px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                background: reportMode === "all" ? "linear-gradient(135deg, #ec4899, #8b5cf6)" : "transparent",
+                color: reportMode === "all" ? "#fff" : "#9ca3af",
+              }}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setReportMode("monthly")}
+              className="text-xs font-extrabold px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                background: reportMode === "monthly" ? "linear-gradient(135deg, #ec4899, #8b5cf6)" : "transparent",
+                color: reportMode === "monthly" ? "#fff" : "#9ca3af",
+              }}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setReportMode("daily")}
+              className="text-xs font-extrabold px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                background: reportMode === "daily" ? "linear-gradient(135deg, #ec4899, #8b5cf6)" : "transparent",
+                color: reportMode === "daily" ? "#fff" : "#9ca3af",
+              }}
+            >
+              Daily
+            </button>
+          </div>
+          {/* Month or Date selector — only shown once a specific period is picked */}
+          {isMonthly && (
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="text-xs font-bold rounded-xl px-3 py-2 cursor-pointer outline-none"
+              style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+            >
+              {months.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          )}
+          {isDaily && (
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="text-xs font-bold rounded-xl px-3 py-2 cursor-pointer outline-none"
+              style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+            />
+          )}
+          {/* Category filter */}
+          <CategoryDropdown value={selectedCategory} onChange={setSelectedCategory} />
           <button
             onClick={onAddTransaction}
             className="text-xs font-extrabold px-4 py-2 rounded-xl"
@@ -143,7 +240,7 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
                 selectedSpender === "all" ? "all" :
                 selectedSpender === "current" ? currentUser :
                 selectedSpender;
-              exportCSV(filtered, spenderLabel);
+              exportCSV(periodTx, spenderLabel);
             }}
             className="text-xs font-extrabold px-4 py-2 rounded-xl text-white flex items-center gap-1.5"
             style={{ background: "linear-gradient(135deg, #ec4899, #8b5cf6)" }}
@@ -202,6 +299,40 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
           )}
         </div>
 
+        {/* Summary: totals for the currently filtered/period view */}
+        <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+          <div className="px-5 py-4">
+            <h2 className="text-sm font-black" style={{ color: "#1f2937" }}>
+              {summaryTitle} — {periodLabel}
+            </h2>
+          </div>
+          <table className="w-full border-collapse">
+            <tbody>
+              <tr style={{ borderTop: "1px solid #fdf2f8" }}>
+                <td className="py-3 px-5 text-xs font-extrabold" style={{ color: "#9ca3af" }}>Income</td>
+                <td className="py-3 px-5 text-sm font-black text-right" style={{ color: "#10b981" }}>
+                  ฿{periodTotalIncome.toFixed(2)}
+                </td>
+              </tr>
+              <tr style={{ borderTop: "1px solid #fdf2f8" }}>
+                <td className="py-3 px-5 text-xs font-extrabold" style={{ color: "#9ca3af" }}>Expenses</td>
+                <td className="py-3 px-5 text-sm font-black text-right" style={{ color: "#1f2937" }}>
+                  ฿{periodTotalExpenses.toFixed(2)}
+                </td>
+              </tr>
+              <tr style={{ borderTop: "2px solid #f3e8ff" }}>
+                <td className="py-3 px-5 text-xs font-extrabold" style={{ color: "#7c3aed" }}>Net</td>
+                <td
+                  className="py-3 px-5 text-sm font-black text-right"
+                  style={{ color: periodTotalIncome - periodTotalExpenses >= 0 ? "#10b981" : "#ef4444" }}
+                >
+                  ฿{(periodTotalIncome - periodTotalExpenses).toFixed(2)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
         {/* Table */}
         <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
           {loading ? (
@@ -210,8 +341,8 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
             </div>
           ) : (
             <RecentTransactions
-              transactions={filtered}
-              limit={filtered.length}
+              transactions={periodTx}
+              limit={periodTx.length}
               onEdit={setEditingTx}
               onDelete={setDeletingTx}
             />

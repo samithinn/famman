@@ -7,6 +7,7 @@ import {
   buildDailySummary,
   buildMonthlySummary,
   buildRecentTransactionsFlex,
+  buildSubscriptionsFlex,
   buildSummaryFlex,
   buildTransactionListFlex,
   fetchTransactionPage,
@@ -681,6 +682,40 @@ async function sendCategoryList(
   }
 
   await respond(lineUserId, message);
+}
+
+// "sub" command — read-only, lists active (non-paused) subscriptions with
+// a total monthly sum. No create/edit/delete via LINE; CRUD is web-only
+// (Settings → Subscriptions).
+async function handleSubscriptionsCommand(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("line_user_id", lineUserId)
+    .single();
+
+  if (!profile) {
+    await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    return;
+  }
+
+  const { data: subs } = await supabase
+    .from("subscriptions")
+    .select("name, amount, billing_day")
+    .eq("user_id", profile.id)
+    .eq("active", true)
+    .order("billing_day");
+
+  if (!subs || subs.length === 0) {
+    await respond(lineUserId, "ยังไม่มี subscription ที่ใช้งานอยู่เลยครับ");
+    return;
+  }
+
+  const total = subs.reduce((sum, s) => sum + s.amount, 0);
+  await respond(lineUserId, buildSubscriptionsFlex(subs, total));
 }
 
 // --- Category submenu (Rich Menu "หมวดหมู่" button) ---
@@ -1891,6 +1926,12 @@ async function processEvent(
       }
 
       await sendCategoryList(supabase, lineUserId, profile.id);
+      return;
+    }
+
+    // --- View active subscriptions (read-only; total monthly sum) ---
+    if (/^(sub|subs|subscriptions?)$/i.test(text)) {
+      await handleSubscriptionsCommand(supabase, lineUserId);
       return;
     }
 
