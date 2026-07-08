@@ -17,9 +17,12 @@ export async function PUT(
     return NextResponse.json({ error: "date and category are required" }, { status: 400 });
 
   const type = body.type === "income" ? "income" : "expense";
+  // Income can never be Credit Card; otherwise trust the value only if it's
+  // one of the two allowed options, defaulting to Cash.
+  const paymentMethod = type === "income" ? "Cash" : (body.payment_method === "Credit Card" ? "Credit Card" : "Cash");
   const { data, error } = await supabase
     .from("transactions")
-    .update({ date: body.date, amount, category: body.category, note: body.note ?? "", type })
+    .update({ date: body.date, amount, category: body.category, note: body.note ?? "", type, payment_method: paymentMethod })
     .eq("id", params.id)
     .eq("user_id", user.id)
     .select();

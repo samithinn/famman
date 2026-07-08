@@ -17,7 +17,8 @@ interface AddTransactionModalProps {
 
 type Mode = "manual" | "csv";
 type TxType = "expense" | "income";
-type CSVRow = { date: string; amount: string; category: string; note: string };
+type PaymentMethod = "Cash" | "Credit Card";
+type CSVRow = { date: string; amount: string; category: string; note: string; payment_method: PaymentMethod };
 
 function parseCSV(text: string, allowedCategories: string[]): { rows: CSVRow[]; errors: string[] } {
   const lines = text.trim().split("\n").filter(l => l.trim());
@@ -34,7 +35,7 @@ function parseCSV(text: string, allowedCategories: string[]): { rows: CSVRow[]; 
   dataLines.forEach((line, i) => {
     const rowNum = i + (hasHeader ? 2 : 1);
     const parts = line.split(",").map(s => s.trim().replace(/^"|"$/g, ""));
-    const [rawDate = "", rawAmount = "", rawCategory = "", rawNote = ""] = parts;
+    const [rawDate = "", rawAmount = "", rawCategory = "", rawNote = "", rawPaymentMethod = ""] = parts;
     const matchedCategory = categoryByLower.get(rawCategory.toLowerCase());
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
@@ -47,8 +48,15 @@ function parseCSV(text: string, allowedCategories: string[]): { rows: CSVRow[]; 
     if (!rawCategory || (allowedCategories.length > 0 && !matchedCategory)) {
       errors.push(`Row ${rowNum}: Unknown category "${rawCategory}"`);
     }
+    // Payment Method column is optional — blank defaults to Cash.
+    let paymentMethod: PaymentMethod = "Cash";
+    if (rawPaymentMethod.trim()) {
+      if (rawPaymentMethod.trim().toLowerCase() === "credit card") paymentMethod = "Credit Card";
+      else if (rawPaymentMethod.trim().toLowerCase() === "cash") paymentMethod = "Cash";
+      else errors.push(`Row ${rowNum}: Invalid payment method "${rawPaymentMethod}" — must be Cash or Credit Card`);
+    }
 
-    rows.push({ date: rawDate, amount: rawAmount, category: matchedCategory ?? rawCategory, note: rawNote });
+    rows.push({ date: rawDate, amount: rawAmount, category: matchedCategory ?? rawCategory, note: rawNote, payment_method: paymentMethod });
   });
 
   return { rows, errors };
@@ -76,6 +84,7 @@ function localNow() {
 export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddTransactionModalProps) {
   const [mode, setMode] = useState<Mode>("manual");
   const [txType, setTxType] = useState<TxType>("expense");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Cash");
   const [form, setForm] = useState({ date: localNow(), amount: "", category: "", note: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -93,6 +102,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
     if (!isOpen) return;
     setMode("manual");
     setTxType("expense");
+    setPaymentMethod("Cash");
     setError("");
     setCsvRows([]);
     setCsvErrors([]);
@@ -142,7 +152,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
 
     const { data, error: dbError } = await supabase
       .from("transactions")
-      .insert([{ date: new Date(form.date).toISOString(), amount: parseFloat(form.amount), category: form.category, note: form.note, user_id: user.id, spender, type: txType }])
+      .insert([{ date: new Date(form.date).toISOString(), amount: parseFloat(form.amount), category: form.category, note: form.note, user_id: user.id, spender, type: txType, payment_method: txType === "income" ? "Cash" : paymentMethod }])
       .select()
       .single();
 
@@ -150,6 +160,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
     if (dbError) { setError(dbError.message); return; }
     onSuccess(data as Transaction);
     setForm({ date: localNow(), amount: "", category: categories[0] ?? "", note: "" });
+    setPaymentMethod("Cash");
     onClose();
   };
 
@@ -184,6 +195,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
       note: row.note,
       user_id: user.id,
       spender,
+      payment_method: row.payment_method,
     }));
 
     const { data, error: dbError } = await supabase.from("transactions").insert(payload).select();
@@ -310,6 +322,29 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
               </select>
             </div>
 
+            {txType === "expense" && (
+              <div>
+                <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>PAYMENT METHOD</label>
+                <div className="flex rounded-xl overflow-hidden" style={{ border: "2px solid #f3e8ff" }}>
+                  {(["Cash", "Credit Card"] as PaymentMethod[]).map(pm => (
+                    <button
+                      key={pm}
+                      type="button"
+                      onClick={() => setPaymentMethod(pm)}
+                      className="flex-1 py-2 text-xs font-extrabold transition-all"
+                      style={
+                        paymentMethod === pm
+                          ? { background: "linear-gradient(135deg, #ec4899, #8b5cf6)", color: "#fff" }
+                          : { color: "#7c3aed", background: "transparent" }
+                      }
+                    >
+                      {pm === "Cash" ? "💵 Cash" : "💳 Credit Card"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>NOTE</label>
               <input
@@ -348,9 +383,9 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess }: AddT
             {/* Format hint */}
             <div className="rounded-xl p-3 text-xs" style={{ background: "#f8f4ff", border: "1px solid #e9d5ff", color: "#7c3aed" }}>
               <div className="font-extrabold mb-1">Expected CSV format (columns):</div>
-              <code className="font-bold">date, amount, category, note</code>
-              <div className="mt-1 opacity-60">e.g. 2026-06-15,350,Food &amp; Dining,Lunch at café</div>
-              <div className="mt-1 opacity-60">Header row optional. Note column is optional.</div>
+              <code className="font-bold">date, amount, category, note, payment_method</code>
+              <div className="mt-1 opacity-60">e.g. 2026-06-15,350,Food &amp; Dining,Lunch at café,Cash</div>
+              <div className="mt-1 opacity-60">Header row optional. Note and payment_method columns are optional — payment_method defaults to Cash (values: Cash / Credit Card).</div>
             </div>
 
             {/* File picker */}

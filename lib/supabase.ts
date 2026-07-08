@@ -38,4 +38,5 @@ export type Transaction = {
   spender: string;
   user_id: string;
   type: "expense" | "income";
+  payment_method: "Cash" | "Credit Card";
 };

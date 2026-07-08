@@ -23,6 +23,16 @@ CREATE POLICY "users delete own transactions"
   ON transactions FOR DELETE TO authenticated
   USING (auth.uid() = user_id);
 
+-- Payment Method (added for existing installs; the base table is managed
+-- via the dashboard, not created here). Every existing row and any new row
+-- that doesn't specify one defaults to 'Cash'. Income transactions are
+-- always 'Cash' (enforced app-side — LINE bot and web form both refuse to
+-- set 'Credit Card' on an income row).
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payment_method text NOT NULL DEFAULT 'Cash';
+ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_payment_method_check;
+ALTER TABLE transactions ADD CONSTRAINT transactions_payment_method_check
+  CHECK (payment_method IN ('Cash', 'Credit Card'));
+
 -- ------------------------------------------------------------
 -- Profiles
 -- ------------------------------------------------------------

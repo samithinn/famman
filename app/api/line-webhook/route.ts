@@ -114,35 +114,74 @@ function parseTransaction(
   text: string,
   categories: string[],
   mode: "chat" | "ocr" = "chat"
-): { amount: number; category: string; note: string; type: "expense" | "income" } | null {
+): { amount: number; category: string; note: string; type: "expense" | "income"; payment_method: "Cash" | "Credit Card" } | null {
   const trimmed = text.trim();
   const isIncome = trimmed.startsWith("+");
   const raw = isIncome ? trimmed.slice(1).trim() : trimmed;
   const type: "expense" | "income" = isIncome ? "income" : "expense";
 
   // Chat shorthand: "<amount> <category/keyword> <note>" typed manually, in
-  // any order and any capitalization — whichever token is a bare number is
-  // the amount, a token matching a known category name is the category
-  // (category_rules keywords are applied afterwards by applyCategoryRules),
-  // and every other token is the note. Skipped for multi-line/date-looking
-  // text so a pasted receipt still falls through to the OCR extraction
-  // below instead of getting tokenized into a garbage note.
+  // any order and any capitalization. The amount token itself signals both
+  // the transaction type and the payment method:
+  //   *50 / 50*  -> Credit Card expense
+  //   +50        -> Income (always Cash — income can't be Credit Card); a
+  //                 detached leading "+ 50" (space after the +) is also
+  //                 read as income via the isIncome/raw stripping above,
+  //                 preserving the pre-existing whole-message "+" behavior.
+  //   50         -> Cash expense
+  // A token matching a known category name is the category (category_rules
+  // keywords are applied afterwards by applyCategoryRules), and every other
+  // token is the note. Skipped for multi-line/date-looking text so a pasted
+  // receipt still falls through to the OCR extraction below instead of
+  // getting tokenized into a garbage note.
   const looksLikeReceiptBlob = /[\n\r]/.test(raw) || /\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{1,4}/.test(raw) || /\d{1,2}:\d{2}/.test(raw);
   if (mode === "chat" && !looksLikeReceiptBlob) {
     const parts = raw.split(/\s+/).filter(Boolean);
-    const amountIndex = parts.findIndex(p => isFinite(Number(p)) && Number(p) > 0);
 
-    if (amountIndex !== -1) {
-      const amount = Number(parts[amountIndex]);
+    const creditIndex = parts.findIndex(p => /^\*\d+(\.\d+)?$/.test(p) || /^\d+(\.\d+)?\*$/.test(p));
+    // Skip re-checking for a glued "+50" token once the whole message
+    // already started with a detached "+" — the leading "+" was stripped
+    // out of `raw` above, so no token can carry it anymore anyway.
+    const incomeIndex = !isIncome ? parts.findIndex(p => /^\+\d+(\.\d+)?$/.test(p)) : -1;
+    const cashIndex = parts.findIndex(p => /^\d+(\.\d+)?$/.test(p) && Number(p) > 0);
+
+    let amountIndex = -1;
+    let amount = 0;
+    let resolvedType: "expense" | "income" = type;
+    let paymentMethod: "Cash" | "Credit Card" = "Cash";
+
+    if (creditIndex !== -1) {
+      amountIndex = creditIndex;
+      amount = Number(parts[creditIndex].replace(/\*/g, ""));
+      resolvedType = "expense";
+      paymentMethod = "Credit Card";
+    } else if (isIncome && cashIndex !== -1) {
+      amountIndex = cashIndex;
+      amount = Number(parts[cashIndex]);
+      resolvedType = "income";
+      paymentMethod = "Cash";
+    } else if (incomeIndex !== -1) {
+      amountIndex = incomeIndex;
+      amount = Number(parts[incomeIndex].slice(1));
+      resolvedType = "income";
+      paymentMethod = "Cash";
+    } else if (cashIndex !== -1) {
+      amountIndex = cashIndex;
+      amount = Number(parts[cashIndex]);
+      resolvedType = "expense";
+      paymentMethod = "Cash";
+    }
+
+    if (amountIndex !== -1 && isFinite(amount) && amount > 0) {
       const remaining = parts.filter((_, i) => i !== amountIndex);
 
       const categoryIndex = remaining.findIndex(p => categories.some(c => c.toLowerCase() === p.toLowerCase()));
       if (categoryIndex === -1) {
-        return { amount, category: "Other", note: remaining.join(" "), type };
+        return { amount, category: "Other", note: remaining.join(" "), type: resolvedType, payment_method: paymentMethod };
       }
       const category = categories.find(c => c.toLowerCase() === remaining[categoryIndex].toLowerCase())!;
       const note = remaining.filter((_, i) => i !== categoryIndex).join(" ");
-      return { amount, category, note, type };
+      return { amount, category, note, type: resolvedType, payment_method: paymentMethod };
     }
   }
 
@@ -216,7 +255,9 @@ function parseTransaction(
   const noteLower = note.toLowerCase();
   const matched = categories.find(c => noteLower.includes(c.toLowerCase()));
 
-  return { amount, category: matched ?? "Other", note, type };
+  // OCR/receipt-photo transactions (iOS Shortcut, LINE slip-photo scan)
+  // never carry a *50/+50-style marker — always Cash.
+  return { amount, category: matched ?? "Other", note, type, payment_method: "Cash" };
 }
 
 // Looks up the user's category_rules and, if the input text contains a
@@ -878,6 +919,7 @@ async function applyEditToLastTransaction(
       amount: editParsed.amount,
       category: editParsed.category,
       type: editParsed.type,
+      payment_method: editParsed.payment_method,
       ...(hasNote ? { note: editParsed.note } : {}),
     })
     .eq("id", profile.line_last_transaction_id);
@@ -892,7 +934,7 @@ async function applyEditToLastTransaction(
   } else {
     const catLabel = hasNote ? `${editParsed.category} (${editParsed.note})` : editParsed.category;
     const personality = await pickPersonalityResponse(supabase, editParsed.category, editParsed.type, profileId, (profile as Record<string, unknown>).line_last_response as string ?? null);
-    await respond(lineUserId, buildSuccessMessage(personality, editParsed.amount, catLabel));
+    await respond(lineUserId, buildSuccessMessage(personality, editParsed.amount, catLabel, editParsed.payment_method));
   }
 }
 
@@ -1086,14 +1128,18 @@ async function handlePostback(
   }
 }
 
-function buildSuccessMessage(personality: string, amount: number, catLabel: string): string {
+function buildSuccessMessage(personality: string, amount: number, catLabel: string, paymentMethod: "Cash" | "Credit Card" = "Cash"): string {
   const summaries = [
     `(จัดไป: ฿${amount.toLocaleString()} - ${catLabel})`,
     `(บันทึกเรียบร้อยละจ้า ฿${amount.toLocaleString()} หมวด ${catLabel})`,
     `(เช็คให้ละ ฿${amount.toLocaleString()} สำหรับ ${catLabel})`,
   ];
   const summary = summaries[Math.floor(Math.random() * summaries.length)];
-  return `${personality} ${summary}`;
+  // Credit card marker (*50/50*) gets an explicit tag so the user has some
+  // confirmation the marker actually registered — there's no other UI
+  // surface for it in the chat flow.
+  const cardTag = paymentMethod === "Credit Card" ? " 💳 บัตรเครดิต" : "";
+  return `${personality} ${summary}${cardTag}`;
 }
 
 // Extracts the "ALLCAPS (Name)" parenthetical (e.g. "TUNGNGERN (NALINEE)" ->
@@ -1342,7 +1388,7 @@ async function handleShortcutRequest(
   const date = new Date().toISOString();
   const { data: txData, error: txError } = await supabase
     .from("transactions")
-    .insert([{ date, amount: parsed.amount, category: parsed.category, note, spender, user_id: profile.id, type: parsed.type }])
+    .insert([{ date, amount: parsed.amount, category: parsed.category, note, spender, user_id: profile.id, type: parsed.type, payment_method: parsed.payment_method }])
     .select("id");
 
   if (txError) {
@@ -1437,7 +1483,7 @@ async function handleSlipImage(
   const date = new Date().toISOString();
   const { data: txData, error: txError } = await supabase
     .from("transactions")
-    .insert([{ date, amount: parsed.amount, category: parsed.category, note, spender, user_id: profile.id, type: parsed.type }])
+    .insert([{ date, amount: parsed.amount, category: parsed.category, note, spender, user_id: profile.id, type: parsed.type, payment_method: parsed.payment_method }])
     .select("id");
 
   if (txError) {
@@ -1644,7 +1690,7 @@ async function processEvent(
 
       const { data: deletedTxn } = await supabase
         .from("transactions")
-        .select("date, amount, category, note, spender, user_id, type")
+        .select("date, amount, category, note, spender, user_id, type, payment_method")
         .eq("id", delProfile.line_last_transaction_id)
         .single();
 
@@ -1682,7 +1728,7 @@ async function processEvent(
         .single();
 
       const deleted = undoProfile?.line_last_deleted as
-        | { date: string; amount: number; category: string; note: string | null; spender: string | null; user_id: string; type: "expense" | "income" }
+        | { date: string; amount: number; category: string; note: string | null; spender: string | null; user_id: string; type: "expense" | "income"; payment_method: "Cash" | "Credit Card" }
         | null;
 
       if (!undoProfile || !deleted) {
@@ -1946,7 +1992,7 @@ async function processEvent(
     const date = new Date().toISOString();
     const { data: txData, error: txError } = await supabase
       .from("transactions")
-      .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id, type: parsed.type }])
+      .insert([{ date, amount: parsed.amount, category: parsed.category, note: parsed.note, spender, user_id: profile.id, type: parsed.type, payment_method: parsed.payment_method }])
       .select("id");
 
     if (txError) {
@@ -1965,5 +2011,5 @@ async function processEvent(
 
     const catLabel = parsed.note ? `${parsed.category} (${parsed.note})` : parsed.category;
     const personality = await pickPersonalityResponse(supabase, parsed.category, parsed.type, profile.id, (profile as Record<string, unknown>).line_last_response as string ?? null);
-    await respond(lineUserId, buildSuccessMessage(personality, parsed.amount, catLabel));
+    await respond(lineUserId, buildSuccessMessage(personality, parsed.amount, catLabel, parsed.payment_method));
 }

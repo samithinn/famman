@@ -18,6 +18,7 @@ function toDatetimeLocal(isoStr: string): string {
 
 export default function EditTransactionModal({ transaction, onClose, onSuccess }: EditTransactionModalProps) {
   const [txType, setTxType] = useState<"expense" | "income">(transaction.type ?? "expense");
+  const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Credit Card">(transaction.payment_method ?? "Cash");
   const [form, setForm] = useState({
     date: toDatetimeLocal(transaction.date),
     amount: String(transaction.amount),
@@ -89,7 +90,7 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
     const res = await fetch(`/api/transactions/${transaction.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date: new Date(form.date).toISOString(), amount, category: form.category, note: form.note, type: txType }),
+      body: JSON.stringify({ date: new Date(form.date).toISOString(), amount, category: form.category, note: form.note, type: txType, payment_method: txType === "income" ? "Cash" : paymentMethod }),
     });
     setLoading(false);
     if (!res.ok) {
@@ -195,6 +196,30 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
               }
             </select>
           </div>
+
+          {/* Payment Method */}
+          {txType === "expense" && (
+            <div>
+              <label className="block text-xs font-extrabold mb-1" style={{ color: "#9ca3af", letterSpacing: "0.8px" }}>PAYMENT METHOD</label>
+              <div className="flex rounded-xl overflow-hidden" style={{ border: "2px solid #f3e8ff" }}>
+                {(["Cash", "Credit Card"] as const).map(pm => (
+                  <button
+                    key={pm}
+                    type="button"
+                    onClick={() => setPaymentMethod(pm)}
+                    className="flex-1 py-2 text-xs font-extrabold transition-all"
+                    style={
+                      paymentMethod === pm
+                        ? { background: "linear-gradient(135deg, #ec4899, #8b5cf6)", color: "#fff" }
+                        : { color: "#7c3aed", background: "transparent" }
+                    }
+                  >
+                    {pm === "Cash" ? "💵 Cash" : "💳 Credit Card"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Note */}
           <div>
