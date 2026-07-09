@@ -4,12 +4,15 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { AsyncLocalStorage } from "async_hooks";
 import { NextRequest, NextResponse } from "next/server";
 import {
+  bangkokDateStr,
+  buildCreditCardListFlex,
   buildDailySummary,
   buildMonthlySummary,
   buildRecentTransactionsFlex,
   buildSubscriptionsFlex,
   buildSummaryFlex,
   buildTransactionListFlex,
+  fetchCreditCardPage,
   fetchTransactionPage,
   formatPeriodLabel,
   pushToLine,
@@ -428,11 +431,17 @@ const HELP_MESSAGE_FALLBACK = [
   "🧾 ดูรายการล่าสุด 5 รายการ:",
   "show หรือ แสดง",
   "",
+  "💳 ดูรายการบัตรเครดิตเดือนนี้:",
+  "credit หรือ เครดิต",
+  "",
   "📂 ดูหมวดหมู่ทั้งหมด:",
   "cats (แสดงรายชื่อหมวดหมู่)",
   "",
   "📂 เพิ่มหมวดหมู่ใหม่:",
   "cat (บอทจะถามว่าต้องการเพิ่มหมวดอะไร)",
+  "",
+  "🔁 ดู Subscriptions ที่ใช้งานอยู่:",
+  "sub, subs หรือ subscriptions",
   "",
   "🔖 เพิ่มกฎผ่านแชท:",
   "rule chat: [keyword] = [category]",
@@ -515,6 +524,33 @@ async function handleDeepDiveCommand(
   const txnPage = await fetchTransactionPage(supabase, profile.id, period, periodKey, type, page);
   const periodLabel = formatPeriodLabel(period, periodKey);
   await respond(lineUserId, buildTransactionListFlex(period, periodKey, periodLabel, type, txnPage));
+}
+
+// "credit" command — this month's Credit Card transactions, paginated the
+// same way as Deep Dive. `periodKey` is only passed when paging in from the
+// "ดูเพิ่มเติม" postback button; the initial typed command always uses the
+// current Bangkok month.
+async function handleCreditCardCommand(
+  supabase: ReturnType<typeof serviceClient>,
+  lineUserId: string,
+  periodKey?: string,
+  page = 0
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("line_user_id", lineUserId)
+    .single();
+
+  if (!profile) {
+    await respond(lineUserId, "ยังไม่ได้เชื่อมต่อบัญชีนะ ไปที่ Settings → Connect LINE ก่อนเลย");
+    return;
+  }
+
+  const monthKey = periodKey ?? bangkokDateStr(new Date()).slice(0, 7);
+  const txnPage = await fetchCreditCardPage(supabase, profile.id, monthKey, page);
+  const periodLabel = formatPeriodLabel("monthly", monthKey);
+  await respond(lineUserId, buildCreditCardListFlex(monthKey, periodLabel, txnPage));
 }
 
 // --- Guided "add rule" flow (triggered by the "เพิ่มกฎ" Rich Menu button) ---
@@ -1156,6 +1192,16 @@ async function handlePostback(
         return;
       }
       await handleDeepDiveCommand(supabase, lineUserId, period, periodKey, type, page);
+      return;
+    }
+    case "view_credit_card": {
+      const periodKey = params.get("month");
+      const page = Math.max(Number(params.get("page") ?? "0") || 0, 0);
+      if (!periodKey) {
+        console.log(`[postback] missing month param in data "${data}"`);
+        return;
+      }
+      await handleCreditCardCommand(supabase, lineUserId, periodKey, page);
       return;
     }
     default:
@@ -1932,6 +1978,12 @@ async function processEvent(
     // --- View active subscriptions (read-only; total monthly sum) ---
     if (/^(sub|subs|subscriptions?)$/i.test(text)) {
       await handleSubscriptionsCommand(supabase, lineUserId);
+      return;
+    }
+
+    // --- View this month's Credit Card transactions ---
+    if (/^(credit|เครดิต|บัตรเครดิต)$/i.test(text)) {
+      await handleCreditCardCommand(supabase, lineUserId);
       return;
     }
 

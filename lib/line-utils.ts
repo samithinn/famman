@@ -249,6 +249,36 @@ export async function fetchTransactionPage(
   };
 }
 
+// Paginated fetch for the "credit" command — same shape as fetchTransactionPage
+// but filtered by payment_method instead of income/expense type, and always
+// scoped to a single month (no daily view for this one).
+export async function fetchCreditCardPage(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, any, any>,
+  userId: string,
+  periodKey: string,
+  page: number
+): Promise<TransactionPage> {
+  const range = periodDateRange("monthly", periodKey);
+  const from = page * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+  const { data, count } = await supabase
+    .from("transactions")
+    .select("category, note, amount", { count: "exact" })
+    .eq("user_id", userId)
+    .eq("payment_method", "Credit Card")
+    .gte("date", range.gte)
+    .lte("date", range.lte!)
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  return {
+    items: (data ?? []) as TransactionListItem[],
+    total: count ?? 0,
+    page,
+  };
+}
+
 // Formats a periodKey ("YYYY-MM-DD" for daily, "YYYY-MM" for monthly) into
 // the same Thai label style used by buildDailySummary/buildMonthlySummary,
 // so the Deep Dive list header matches the summary bubble it was opened from.
@@ -530,6 +560,119 @@ export function buildTransactionListFlex(
         paddingAll: "20px",
         contents: [
           { type: "text", text: `${typeLabel}${period === "daily" ? "วันนี้" : "เดือนนี้"}`, size: "sm", color: "#FFFFFF" },
+          { type: "text", text: periodLabel, size: "lg", weight: "bold", color: "#FFFFFF", margin: "sm" },
+        ],
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "20px",
+        contents: body,
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        paddingAll: "12px",
+        contents: footerButtons,
+      },
+    },
+  };
+}
+
+function creditCardAction(): string {
+  return "view_credit_card";
+}
+
+// "credit" command — this month's Credit Card transactions, paginated like
+// the Deep Dive income/expense lists. The month is carried explicitly through
+// the "ดูเพิ่มเติม" postback so later pages stay anchored to the month the
+// list was opened for, even if pressed after a month rollover.
+export function buildCreditCardListFlex(
+  periodKey: string,
+  periodLabel: string,
+  txnPage: TransactionPage
+): LineMessagePayload {
+  const color = PASTEL.expense;
+  const altText = `บัตรเครดิตเดือนนี้: ${periodLabel}`;
+
+  const body: FlexComponent[] = [];
+
+  if (txnPage.items.length === 0) {
+    body.push({ type: "text", text: "ไม่มีรายการบัตรเครดิตเดือนนี้", size: "sm", color: PASTEL.textMuted, align: "center" });
+  } else {
+    txnPage.items.forEach((item, i) => {
+      if (i > 0) body.push({ type: "separator", margin: "md", color: PASTEL.separator });
+      body.push({
+        type: "box",
+        layout: "horizontal",
+        margin: i === 0 ? "none" : "md",
+        contents: [
+          {
+            type: "text",
+            text: `${categoryIcon(item.category)} ${item.category}${item.note ? ` (${item.note})` : ""}`,
+            size: "sm",
+            color: PASTEL.textLabel,
+            flex: 3,
+            wrap: true,
+          },
+          { type: "text", text: fmt(item.amount), size: "sm", weight: "bold", align: "end", color, flex: 2 },
+        ],
+      });
+    });
+
+    const from = txnPage.page * PAGE_SIZE + 1;
+    const to = Math.min(from + txnPage.items.length - 1, txnPage.total);
+    body.push({ type: "separator", margin: "lg", color: PASTEL.separator });
+    body.push({
+      type: "text",
+      text: `แสดง ${from}-${to} จาก ${txnPage.total} รายการ`,
+      size: "xs",
+      color: PASTEL.textMuted,
+      margin: "lg",
+      align: "center",
+    });
+  }
+
+  const footerButtons: FlexComponent[] = [];
+  const hasMore = (txnPage.page + 1) * PAGE_SIZE < txnPage.total;
+  if (hasMore) {
+    footerButtons.push({
+      type: "button",
+      style: "secondary",
+      color: PASTEL.pillBg,
+      action: {
+        type: "postback",
+        label: "ดูเพิ่มเติม",
+        data: postbackData({ action: creditCardAction(), month: periodKey, page: String(txnPage.page + 1) }),
+        displayText: "ดูเพิ่มเติม",
+      },
+    });
+  }
+  footerButtons.push({
+    type: "button",
+    style: hasMore ? "link" : "secondary",
+    color: hasMore ? PASTEL.accent : PASTEL.pillBg,
+    action: {
+      type: "postback",
+      label: "ย้อนกลับไปเมนูหลัก",
+      data: postbackData({ action: summaryAction("monthly") }),
+      displayText: "ย้อนกลับไปเมนูหลัก",
+    },
+  });
+
+  return {
+    type: "flex",
+    altText,
+    contents: {
+      type: "bubble",
+      header: {
+        type: "box",
+        layout: "vertical",
+        backgroundColor: color,
+        paddingAll: "20px",
+        contents: [
+          { type: "text", text: "💳 บัตรเครดิตเดือนนี้", size: "sm", color: "#FFFFFF" },
           { type: "text", text: periodLabel, size: "lg", weight: "bold", color: "#FFFFFF", margin: "sm" },
         ],
       },

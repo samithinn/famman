@@ -7,6 +7,7 @@ import RecentTransactions from "./RecentTransactions";
 import EditTransactionModal from "./EditTransactionModal";
 import PullToRefresh from "./PullToRefresh";
 import CategoryDropdown, { ALL_CATEGORIES } from "./CategoryDropdown";
+import PaymentMethodDropdown, { ALL_PAYMENT_METHODS } from "./PaymentMethodDropdown";
 
 function toLocalDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -49,6 +50,7 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
   const [currentUser, setCurrentUser] = useState<string>("");
   const [selectedSpender, setSelectedSpender] = useState<string>("current");
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(ALL_PAYMENT_METHODS);
 
   const now = new Date();
   const months = Array.from({ length: 12 }, (_, i) => {
@@ -131,12 +133,15 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
     const categoryMatch =
       selectedCategory === ALL_CATEGORIES || t.category.toLowerCase() === selectedCategory.toLowerCase();
 
+    const paymentMethodMatch =
+      selectedPaymentMethod === ALL_PAYMENT_METHODS || t.payment_method === selectedPaymentMethod;
+
     const searchMatch =
       !search ||
       t.note?.toLowerCase().includes(search.toLowerCase()) ||
       t.category.toLowerCase().includes(search.toLowerCase());
 
-    return spenderMatch && categoryMatch && searchMatch;
+    return spenderMatch && categoryMatch && paymentMethodMatch && searchMatch;
   });
 
   // Narrow further only when an explicit Month or Day period is picked; "All" leaves it unfiltered
@@ -227,6 +232,8 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
           )}
           {/* Category filter */}
           <CategoryDropdown value={selectedCategory} onChange={setSelectedCategory} />
+          {/* Payment method filter */}
+          <PaymentMethodDropdown value={selectedPaymentMethod} onChange={setSelectedPaymentMethod} />
           <button
             onClick={onAddTransaction}
             className="text-xs font-extrabold px-4 py-2 rounded-xl"
