@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { RefreshCw, AlertCircle } from "lucide-react";
 import { supabase, Transaction } from "@/lib/supabase";
@@ -11,6 +11,7 @@ import RecentTransactions from "./RecentTransactions";
 import PullToRefresh from "./PullToRefresh";
 import CategoryDropdown, { ALL_CATEGORIES } from "./CategoryDropdown";
 import PaymentMethodDropdown, { ALL_PAYMENT_METHODS } from "./PaymentMethodDropdown";
+import { useTheme } from "@/lib/ThemeContext";
 
 const PIE_COLORS = [
   "#a78bfa", "#f9a8d4", "#6ee7b7", "#fcd34d", "#93c5fd",
@@ -34,10 +35,16 @@ function toLocalDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// Custom pie label: percent only (name is already in the Legend) and skipped
-// for tiny slices — showing "name + percent" at a fixed font size was
-// overflowing/overlapping on narrow mobile widths.
-function renderPieLabel(props: { cx: number; cy: number; midAngle: number; outerRadius: number; percent: number }) {
+// Custom pie label: percent only (breakdown with values lives in the side
+// legend) and skipped for tiny slices — showing "name + percent" at a fixed
+// font size was overflowing/overlapping on narrow mobile widths.
+// `color` is passed in by the caller since it depends on the active theme —
+// this text is an SVG `fill` attribute, not a `style` string, so it falls
+// outside the [style*="..."] dark-mode overrides in globals.css.
+function renderPieLabel(
+  props: { cx: number; cy: number; midAngle: number; outerRadius: number; percent: number },
+  color: string
+) {
   const { cx, cy, midAngle, outerRadius, percent } = props;
   if (percent < 0.04) return null;
   const RADIAN = Math.PI / 180;
@@ -45,9 +52,23 @@ function renderPieLabel(props: { cx: number; cy: number; midAngle: number; outer
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
   const y = cy + radius * Math.sin(-midAngle * RADIAN);
   return (
-    <text x={x} y={y} fill="#374151" textAnchor={x > cx ? "start" : "end"} dominantBaseline="central" fontSize={10} fontWeight={700}>
+    <text x={x} y={y} fill={color} textAnchor={x > cx ? "start" : "end"} dominantBaseline="central" fontSize={10} fontWeight={700}>
       {`${(percent * 100).toFixed(0)}%`}
     </text>
+  );
+}
+
+// Always-dark tooltip card (mirrors SpendingChart's CustomTooltip) so it stays
+// legible regardless of page theme, instead of the default Recharts tooltip
+// which renders near-invisible light-on-light/white-on-white text.
+function CategoryTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name?: string; value?: number }> }) {
+  if (!active || !payload?.length) return null;
+  const { name, value } = payload[0];
+  return (
+    <div className="rounded-xl px-3 py-2 text-xs shadow-lg" style={{ background: "#1f2937" }}>
+      <p className="font-extrabold capitalize mb-0.5" style={{ color: "#e4e4e7" }}>{name}</p>
+      <p style={{ color: "#c4b5fd" }}>-฿{(value ?? 0).toFixed(2)}</p>
+    </div>
   );
 }
 
@@ -74,6 +95,11 @@ interface ReportProps {
 }
 
 export default function Report({ newTransaction }: ReportProps) {
+  const { resolved } = useTheme();
+  const isDark = resolved === "dark";
+  const pieLabelColor = isDark ? "#e5e7eb" : "#374151";
+  const pieSliceStroke = isDark ? "#2d2d42" : "#ffffff";
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -319,19 +345,43 @@ export default function Report({ newTransaction }: ReportProps) {
           ) : activePieData.length === 0 ? (
             <p className="text-center py-10 text-sm font-bold" style={{ color: "#9ca3af" }}>No expenses for this period.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie
-                  data={activePieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
-                  label={renderPieLabel}
-                  labelLine={false}
-                >
-                  {activePieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                </Pie>
-                <Tooltip formatter={(v: number) => `฿${v.toFixed(2)}`} />
-                <Legend wrapperStyle={{ fontSize: "11px", fontWeight: 700 }} />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="flex flex-col sm:flex-row items-center gap-2">
+              <div className="w-full sm:w-1/2 sm:flex-shrink-0">
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={activePieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
+                      label={(props: { cx: number; cy: number; midAngle: number; outerRadius: number; percent: number }) => renderPieLabel(props, pieLabelColor)}
+                      labelLine={false}
+                    >
+                      {activePieData.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke={pieSliceStroke} strokeWidth={2} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<CategoryTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              {/* Side legend: color swatch + category + amount breakdown */}
+              <div className="w-full sm:w-1/2 sm:pl-2 space-y-1.5" style={{ maxHeight: 220, overflowY: "auto" }}>
+                {activePieData.map((entry, i) => (
+                  <div key={entry.name} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="rounded-full flex-shrink-0"
+                        style={{ width: 9, height: 9, background: PIE_COLORS[i % PIE_COLORS.length] }}
+                      />
+                      <span className="text-xs font-extrabold truncate capitalize" style={{ color: "#374151" }}>
+                        {entry.name}
+                      </span>
+                    </div>
+                    <span className="text-xs font-black flex-shrink-0" style={{ color: "#1f2937" }}>
+                      -฿{entry.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
