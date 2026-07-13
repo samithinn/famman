@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { X, LogOut } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-export type View = "dashboard" | "transactions" | "report" | "settings";
+export type View = "dashboard" | "transactions" | "report" | "kanban" | "settings";
 
 interface SidebarProps {
   activeView: View;
@@ -17,6 +17,7 @@ const navItems: { label: string; view: View; icon: string }[] = [
   { label: "Dashboard",       view: "dashboard",    icon: "📊" },
   { label: "Report",          view: "report",       icon: "📅" },
   { label: "Transactions",    view: "transactions", icon: "💳" },
+  { label: "Kanban",          view: "kanban",       icon: "🗂️" },
   { label: "Settings",        view: "settings",     icon: "⚙️" },
 ];
 

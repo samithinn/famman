@@ -344,6 +344,51 @@ CREATE TABLE IF NOT EXISTS bot_settings (
 
 ALTER TABLE bot_settings ENABLE ROW LEVEL SECURITY;
 
+-- ------------------------------------------------------------
+-- Kanban boards. One user's projects/tasks are never visible to
+-- another user — user_id is denormalized onto kanban_tasks (not
+-- just kanban_projects) so RLS/ownership checks on a task never
+-- need to join back to its parent project.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS kanban_projects (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  description text,
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE kanban_projects ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users manage own kanban projects" ON kanban_projects;
+CREATE POLICY "users manage own kanban projects"
+  ON kanban_projects FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS kanban_tasks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES kanban_projects(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  description text,
+  due_date date,
+  priority text NOT NULL DEFAULT 'Medium' CHECK (priority IN ('High', 'Medium', 'Low')),
+  status text NOT NULL DEFAULT 'To do' CHECK (status IN ('To do', 'In Progress', 'Done')),
+  color text,
+  position double precision NOT NULL DEFAULT 0,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS kanban_tasks_project_status_position_idx
+  ON kanban_tasks (project_id, status, position);
+
+ALTER TABLE kanban_tasks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users manage own kanban tasks" ON kanban_tasks;
+CREATE POLICY "users manage own kanban tasks"
+  ON kanban_tasks FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
 INSERT INTO bot_settings (key, value) VALUES ('help_message',
 '📖 คำสั่งที่ใช้ได้ทั้งหมด
 ━━━━━━━━━━━━━
