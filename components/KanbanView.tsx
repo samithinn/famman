@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ConfirmDialog from "./ConfirmDialog";
 
 // Ported from the Claude Design prototype "Kanban Board.dc.html"
 // (project 9c8419c7-c45f-4aed-8d6a-b5fbc85f32e7) — same layout, colors and
@@ -197,6 +198,7 @@ export default function KanbanView() {
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
   const [projectDragOverId, setProjectDragOverId] = useState<string | null>(null);
 
+  const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [modal, setModal] = useState<ModalState>({ open: false });
   const [modalForm, setModalForm] = useState<ModalForm>(EMPTY_FORM);
 
@@ -299,19 +301,24 @@ export default function KanbanView() {
     setEditingProjectId(null);
   }
 
-  async function deleteProject(e: React.MouseEvent<HTMLButtonElement>) {
-    e.stopPropagation();
-    const projectId = e.currentTarget.getAttribute("data-project-id")!;
-    const project = projects.find(p => p.id === projectId);
-    if (!project) return;
-    if (!window.confirm(`Delete project "${project.name}"? This will also delete all its tasks.`)) return;
-
+  async function performDeleteProject(projectId: string) {
     setProjects(prev => prev.filter(p => p.id !== projectId));
     const res = await fetch(`/api/kanban/projects/${projectId}`, { method: "DELETE" });
     if (!res.ok) {
       setError("Failed to delete project.");
       loadProjects();
     }
+  }
+
+  function deleteProject(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    const projectId = e.currentTarget.getAttribute("data-project-id")!;
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+    setConfirmState({
+      message: `Delete project "${project.name}"? This will also delete all its tasks.`,
+      onConfirm: () => { performDeleteProject(projectId); setConfirmState(null); },
+    });
   }
 
   async function completeProject(projectId: string) {
@@ -403,11 +410,7 @@ export default function KanbanView() {
     openTaskEditor(projectId, task);
   }
 
-  async function deleteTask(projectId: string, taskId: string): Promise<boolean> {
-    const project = projects.find(p => p.id === projectId);
-    const task = project?.kanban_tasks.find(t => t.id === taskId);
-    if (!window.confirm(`Delete task "${task?.title ?? "this task"}"? This cannot be undone.`)) return false;
-
+  async function performDeleteTask(projectId: string, taskId: string) {
     setProjects(prev =>
       prev.map(p => (p.id === projectId ? { ...p, kanban_tasks: p.kanban_tasks.filter(t => t.id !== taskId) } : p))
     );
@@ -416,14 +419,26 @@ export default function KanbanView() {
       setError("Failed to delete task.");
       loadProjects();
     }
-    return true;
+  }
+
+  function confirmDeleteTask(projectId: string, taskId: string, onDeleted?: () => void) {
+    const project = projects.find(p => p.id === projectId);
+    const task = project?.kanban_tasks.find(t => t.id === taskId);
+    setConfirmState({
+      message: `Delete task "${task?.title ?? "this task"}"? This cannot be undone.`,
+      onConfirm: () => {
+        performDeleteTask(projectId, taskId);
+        onDeleted?.();
+        setConfirmState(null);
+      },
+    });
   }
 
   function onDeleteCardClick(e: React.MouseEvent<HTMLButtonElement>) {
     e.stopPropagation();
     const projectId = e.currentTarget.getAttribute("data-project-id")!;
     const taskId = e.currentTarget.getAttribute("data-task-id")!;
-    deleteTask(projectId, taskId);
+    confirmDeleteTask(projectId, taskId);
   }
 
   function closeModal() {
@@ -502,10 +517,9 @@ export default function KanbanView() {
     setModal({ open: false });
   }
 
-  async function deleteTaskFromModal() {
+  function deleteTaskFromModal() {
     if (!modal.open || !modal.taskId) return;
-    const deleted = await deleteTask(modal.projectId, modal.taskId);
-    if (deleted) setModal({ open: false });
+    confirmDeleteTask(modal.projectId, modal.taskId, () => setModal({ open: false }));
   }
 
   function onCardDragStart(e: React.DragEvent<HTMLDivElement>) {
@@ -1469,6 +1483,13 @@ export default function KanbanView() {
         </>
         );
       })()}
+
+      <ConfirmDialog
+        open={!!confirmState}
+        message={confirmState?.message ?? ""}
+        onConfirm={() => confirmState?.onConfirm()}
+        onCancel={() => setConfirmState(null)}
+      />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, ArrowLeft, CheckCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import AvatarUpload from "@/components/AvatarUpload";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 type LineStatus = { linked: boolean };
 
@@ -24,6 +25,7 @@ export default function ProfilePage() {
   const [lineWaiting, setLineWaiting] = useState(false);
   const [unlinkLoading, setUnlinkLoading] = useState(false);
   const [lineError, setLineError] = useState("");
+  const [confirmUnlinkOpen, setConfirmUnlinkOpen] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -359,7 +361,7 @@ export default function ProfilePage() {
                 Send <code className="font-bold" style={{ color: "#7c3aed" }}>500 Food &amp; Dining</code> to the bot to log an expense.
               </p>
               <button
-                onClick={() => { if (window.confirm("Unlink your LINE account? You'll stop receiving bot replies until you link again.")) unlinkLine(); }}
+                onClick={() => setConfirmUnlinkOpen(true)}
                 disabled={unlinkLoading}
                 className="w-full py-2.5 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2"
                 style={{ background: "#fef2f2", color: "#ef4444", border: "2px solid #fecaca", opacity: unlinkLoading ? 0.7 : 1 }}
@@ -434,6 +436,15 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmUnlinkOpen}
+        title="Unlink LINE account?"
+        message="You'll stop receiving bot replies until you link again."
+        confirmLabel="Unlink"
+        onConfirm={() => { setConfirmUnlinkOpen(false); unlinkLine(); }}
+        onCancel={() => setConfirmUnlinkOpen(false)}
+      />
     </div>
   );
 }

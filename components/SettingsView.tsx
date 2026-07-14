@@ -5,6 +5,7 @@ import { Loader2, Pencil, Trash2, Check, X, Plus, Shield, User, MessageSquare, Z
 import { supabase } from "@/lib/supabase";
 import PullToRefresh from "./PullToRefresh";
 import ThemeToggle from "./ThemeToggle";
+import ConfirmDialog from "./ConfirmDialog";
 
 type CatType = "expense" | "income";
 type Category = { id: string; name: string; type: CatType };
@@ -20,6 +21,7 @@ type Subscription = {
 };
 
 export default function SettingsView() {
+  const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<Role>("user");
 
@@ -699,7 +701,7 @@ export default function SettingsView() {
                       <Pencil size={13} />
                     </button>
                     <button
-                      onClick={() => { if (window.confirm(`Delete category "${cat.name}"?`)) deleteCategory(cat.id); }}
+                      onClick={() => setConfirmState({ message: `Delete category "${cat.name}"?`, onConfirm: () => { deleteCategory(cat.id); setConfirmState(null); } })}
                       disabled={deletingId === cat.id}
                       className="p-1 rounded-lg"
                       style={{ color: "#ef4444" }}
@@ -1049,7 +1051,7 @@ export default function SettingsView() {
                                         <Pencil size={13} />
                                       </button>
                                       <button
-                                        onClick={() => { if (window.confirm(`Delete this ${r.type} response?\n\n"${r.response_text}"`)) deleteLineResponse(r.id); }}
+                                        onClick={() => setConfirmState({ message: `Delete this ${r.type} response?\n\n"${r.response_text}"`, onConfirm: () => { deleteLineResponse(r.id); setConfirmState(null); } })}
                                         disabled={deletingRespId === r.id}
                                         className="p-1 rounded-lg flex-shrink-0"
                                         style={{ color: "#ef4444" }}
@@ -1307,7 +1309,7 @@ export default function SettingsView() {
                   <span className="text-xs font-semibold flex-shrink-0" style={{ color: "#9ca3af" }}>→</span>
                   <span className="flex-1 text-xs font-bold" style={{ color: "#374151" }}>{rule.category}</span>
                   <button
-                    onClick={() => { if (window.confirm(`Delete rule "${rule.keyword} → ${rule.category}"?`)) deleteCategoryRule(rule.id); }}
+                    onClick={() => setConfirmState({ message: `Delete rule "${rule.keyword} → ${rule.category}"?`, onConfirm: () => { deleteCategoryRule(rule.id); setConfirmState(null); } })}
                     disabled={deletingRuleId === rule.id}
                     className="p-1 rounded-lg flex-shrink-0"
                     style={{ color: "#ef4444" }}
@@ -1559,7 +1561,7 @@ export default function SettingsView() {
                           : sub.active ? <Pause size={13} /> : <Play size={13} />}
                       </button>
                       <button
-                        onClick={() => { if (window.confirm(`Delete subscription "${sub.name}"?`)) deleteSubscription(sub.id); }}
+                        onClick={() => setConfirmState({ message: `Delete subscription "${sub.name}"?`, onConfirm: () => { deleteSubscription(sub.id); setConfirmState(null); } })}
                         disabled={deletingSubId === sub.id}
                         className="p-1 rounded-lg flex-shrink-0"
                         style={{ color: "#ef4444" }}
@@ -1668,6 +1670,13 @@ export default function SettingsView() {
           </button>
         </div>
       </PullToRefresh>
+
+      <ConfirmDialog
+        open={!!confirmState}
+        message={confirmState?.message ?? ""}
+        onConfirm={() => confirmState?.onConfirm()}
+        onCancel={() => setConfirmState(null)}
+      />
     </div>
   );
 }
