@@ -30,6 +30,12 @@ const COLUMNS: { id: string; label: string }[] = [
   { id: "Done", label: "Done" },
 ];
 
+const STATUS_DOT_COLOR: Record<string, string> = {
+  "To do": "#FF6FA8",
+  "In Progress": "#E8A23D",
+  "Done": "#2F9E63",
+};
+
 type KanbanTask = {
   id: string;
   project_id: string;
@@ -661,6 +667,14 @@ export default function KanbanView() {
     .slice(0, 8);
 
   const calendarDays = getCalendarDays(calendarCursor.year, calendarCursor.month);
+  const calendarMonthPrefix = `${calendarCursor.year}-${String(calendarCursor.month + 1).padStart(2, "0")}`;
+  const periodTaskEntries = filteredTaskEntries
+    .filter(({ task }) => task.due_date && task.due_date.startsWith(calendarMonthPrefix))
+    .sort((a, b) => (a.task.due_date! < b.task.due_date! ? -1 : a.task.due_date! > b.task.due_date! ? 1 : 0));
+  const periodTasksByColumn = COLUMNS.map(col => ({
+    ...col,
+    entries: periodTaskEntries.filter(({ task }) => task.status === col.id),
+  }));
 
   return (
     <div style={{ minHeight: "100%", width: "100%", background: "#FAF8FF", fontFamily: "'Nunito',sans-serif", color: "#2D2B3A", display: "flex", flexDirection: "column" }}>
@@ -1057,91 +1071,143 @@ export default function KanbanView() {
 
       {/* Calendar */}
       {kanbanTab === "calendar" && (
-        <div style={{ flex: 1, padding: 32, overflow: "auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
-            <button
-              onClick={goToPrevMonth}
-              style={{ width: 32, height: 32, borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
-            >
-              ‹
-            </button>
-            <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 18, minWidth: 170, textAlign: "center" }}>
-              {MONTH_NAMES[calendarCursor.month]} {calendarCursor.year}
-            </span>
-            <button
-              onClick={goToNextMonth}
-              style={{ width: 32, height: 32, borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
-            >
-              ›
-            </button>
-            <button
-              onClick={goToToday}
-              style={{ padding: "7px 14px", borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
-            >
-              Today
-            </button>
+        <div style={{ flex: 1, padding: 32, overflow: "auto", display: "flex", gap: 24, alignItems: "flex-start" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
+              <button
+                onClick={goToPrevMonth}
+                style={{ width: 32, height: 32, borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
+              >
+                ‹
+              </button>
+              <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 18, minWidth: 170, textAlign: "center" }}>
+                {MONTH_NAMES[calendarCursor.month]} {calendarCursor.year}
+              </span>
+              <button
+                onClick={goToNextMonth}
+                style={{ width: 32, height: 32, borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
+              >
+                ›
+              </button>
+              <button
+                onClick={goToToday}
+                style={{ padding: "7px 14px", borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+              >
+                Today
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
+              {WEEKDAY_SHORT.map(d => (
+                <div key={d} style={{ textAlign: "center", fontSize: 12, fontWeight: 800, color: "#9A93AC", padding: "4px 0" }}>
+                  {d}
+                </div>
+              ))}
+              {calendarDays.map(cell => {
+                const dayTasks = tasksByDate[cell.key] ?? [];
+                const isToday = cell.key === todayStr;
+                return (
+                  <div
+                    key={cell.key}
+                    style={{
+                      height: 108,
+                      borderRadius: 12,
+                      padding: 8,
+                      background: cell.inMonth ? "#FFFFFF" : "#FAF8FF",
+                      border: isToday ? `2px solid ${ACCENT_COLOR}` : "1px solid #EFEAFA",
+                      opacity: cell.inMonth ? 1 : 0.55,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 700, color: isToday ? ACCENT_COLOR : "#5C5570" }}>
+                        {cell.day}
+                      </span>
+                      {isToday && (
+                        <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: ACCENT_COLOR, borderRadius: 100, padding: "1px 7px" }}>
+                          Today
+                        </span>
+                      )}
+                    </div>
+                    {dayTasks.slice(0, 3).map(({ project, task }) => {
+                      const chipColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
+                      return (
+                        <button
+                          key={task.id}
+                          onClick={() => openTaskEditor(project.id, task)}
+                          title={`${project.name}: ${task.title}`}
+                          style={{
+                            display: "block",
+                            textAlign: "left",
+                            background: chipColor,
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "3px 6px",
+                            cursor: "pointer",
+                            width: "100%",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#332F45", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {task.title}
+                          </div>
+                          <div style={{ fontSize: 9.5, fontWeight: 700, color: "#5C5570", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {project.icon ?? PROJECT_ICONS[0]} {project.name}
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {dayTasks.length > 3 && (
+                      <span style={{ fontSize: 10.5, color: "#9A93AC", fontWeight: 700 }}>+{dayTasks.length - 3} more</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
-            {WEEKDAY_SHORT.map(d => (
-              <div key={d} style={{ textAlign: "center", fontSize: 12, fontWeight: 800, color: "#9A93AC", padding: "4px 0" }}>
-                {d}
-              </div>
-            ))}
-            {calendarDays.map(cell => {
-              const dayTasks = tasksByDate[cell.key] ?? [];
-              const isToday = cell.key === todayStr;
-              return (
-                <div
-                  key={cell.key}
-                  style={{
-                    minHeight: 96,
-                    borderRadius: 12,
-                    padding: 8,
-                    background: cell.inMonth ? "#FFFFFF" : "#FAF8FF",
-                    border: isToday ? `2px solid ${ACCENT_COLOR}` : "1px solid #EFEAFA",
-                    opacity: cell.inMonth ? 1 : 0.55,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 4,
-                  }}
-                >
-                  <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 700, color: isToday ? ACCENT_COLOR : "#5C5570" }}>
-                    {cell.day}
-                  </span>
-                  {dayTasks.slice(0, 3).map(({ project, task }) => {
-                    const chipColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
-                    return (
-                      <button
-                        key={task.id}
-                        onClick={() => openTaskEditor(project.id, task)}
-                        title={`${project.name}: ${task.title}`}
-                        style={{
-                          display: "block",
-                          textAlign: "left",
-                          background: chipColor,
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "3px 6px",
-                          cursor: "pointer",
-                          width: "100%",
-                        }}
-                      >
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "#332F45", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {task.title}
-                        </div>
-                        <div style={{ fontSize: 9.5, fontWeight: 700, color: "#5C5570", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {project.icon ?? PROJECT_ICONS[0]} {project.name}
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {dayTasks.length > 3 && (
-                    <span style={{ fontSize: 10.5, color: "#9A93AC", fontWeight: 700 }}>+{dayTasks.length - 3} more</span>
+          <div style={{ width: 280, flexShrink: 0, background: "#FFFFFF", border: "1px solid #EFEAFA", borderRadius: 16, padding: "18px 16px", boxShadow: "0 1px 3px rgba(45,43,58,0.04)" }}>
+            <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 16 }}>Kanban</div>
+            <div style={{ fontSize: 12, color: "#9A93AC", marginBottom: 16 }}>Content in the period you're viewing</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              {periodTasksByColumn.map(col => (
+                <div key={col.id}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: STATUS_DOT_COLOR[col.id] ?? ACCENT_COLOR, flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#5C5570" }}>{col.label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#B0A9C4" }}>{col.entries.length}</span>
+                  </div>
+                  {col.entries.length === 0 ? (
+                    <div style={{ fontSize: 11.5, color: "#C4BFD4", padding: "2px 0 2px 14px" }}>Nothing this month</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {col.entries.map(({ project, task }) => (
+                        <button
+                          key={task.id}
+                          onClick={() => openTaskEditor(project.id, task)}
+                          style={{ display: "block", textAlign: "left", width: "100%", background: "#F7F5FC", border: "none", borderRadius: 10, padding: "8px 10px", cursor: "pointer" }}
+                        >
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#332F45", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {task.title}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 3 }}>
+                            <span style={{ fontSize: 10.5, color: "#9A93AC", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {project.icon ?? PROJECT_ICONS[0]} {project.name}
+                            </span>
+                            {task.due_date && (
+                              <span style={{ fontSize: 10.5, color: "#9A93AC", fontWeight: 700, flexShrink: 0 }}>{formatDayMonth(task.due_date)}</span>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
         </div>
       )}
