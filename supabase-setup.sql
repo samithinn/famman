@@ -355,11 +355,13 @@ CREATE TABLE IF NOT EXISTS kanban_projects (
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name text NOT NULL,
   description text,
+  color text,
   position double precision NOT NULL DEFAULT 0,
   created_at timestamptz DEFAULT now()
 );
 
 ALTER TABLE kanban_projects ADD COLUMN IF NOT EXISTS position double precision NOT NULL DEFAULT 0;
+ALTER TABLE kanban_projects ADD COLUMN IF NOT EXISTS color text;
 
 CREATE INDEX IF NOT EXISTS kanban_projects_user_position_idx
   ON kanban_projects (user_id, position);

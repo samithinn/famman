@@ -42,6 +42,7 @@ type KanbanProject = {
   id: string;
   name: string;
   description: string | null;
+  color: string | null;
   position: number;
   created_at: string;
   kanban_tasks: KanbanTask[];
@@ -124,11 +125,13 @@ export default function KanbanView() {
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
+  const [newProjectColor, setNewProjectColor] = useState(PROJECT_HEADER_COLORS[0]);
   const [savingProject, setSavingProject] = useState(false);
 
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editProjectName, setEditProjectName] = useState("");
   const [editProjectDescription, setEditProjectDescription] = useState("");
+  const [editProjectColor, setEditProjectColor] = useState(PROJECT_HEADER_COLORS[0]);
   const [savingProjectEdit, setSavingProjectEdit] = useState(false);
 
   useEffect(() => {
@@ -156,7 +159,7 @@ export default function KanbanView() {
     const res = await fetch("/api/kanban/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description: newProjectDescription.trim() }),
+      body: JSON.stringify({ name, description: newProjectDescription.trim(), color: newProjectColor }),
     });
     setSavingProject(false);
     if (!res.ok) {
@@ -167,6 +170,7 @@ export default function KanbanView() {
     setProjects(prev => [...prev, project]);
     setNewProjectName("");
     setNewProjectDescription("");
+    setNewProjectColor(PROJECT_HEADER_COLORS[0]);
     setAddProjectOpen(false);
   }
 
@@ -178,6 +182,7 @@ export default function KanbanView() {
     setEditingProjectId(projectId);
     setEditProjectName(project.name);
     setEditProjectDescription(project.description ?? "");
+    setEditProjectColor(project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)]);
   }
 
   function cancelEditProject() {
@@ -192,7 +197,7 @@ export default function KanbanView() {
     const res = await fetch("/api/kanban/projects", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: editingProjectId, name, description: editProjectDescription.trim() }),
+      body: JSON.stringify({ id: editingProjectId, name, description: editProjectDescription.trim(), color: editProjectColor }),
     });
     setSavingProjectEdit(false);
     if (!res.ok) {
@@ -201,7 +206,7 @@ export default function KanbanView() {
     }
     const { project } = await res.json();
     setProjects(prev =>
-      prev.map(p => (p.id === project.id ? { ...p, name: project.name, description: project.description } : p))
+      prev.map(p => (p.id === project.id ? { ...p, name: project.name, description: project.description, color: project.color } : p))
     );
     setEditingProjectId(null);
   }
@@ -462,7 +467,7 @@ export default function KanbanView() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "20px 32px", borderBottom: "1px solid #ECE7FA", background: "#FFFFFF" }}>
         <div style={{ width: 36, height: 36, borderRadius: 11, background: ACCENT_COLOR, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Baloo 2',sans-serif", color: "#fff", fontWeight: 700, fontSize: 18 }}>K</div>
-        <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 20 }}>Kanban</span>
+        <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 20 }}>FamMan x KANBAN</span>
       </div>
 
       {/* Filters toolbar */}
@@ -509,6 +514,15 @@ export default function KanbanView() {
             placeholder="Description (optional)"
             style={{ padding: "9px 12px", borderRadius: 10, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 13.5, outline: "none", flex: 1, minWidth: 200 }}
           />
+          <div style={{ display: "flex", gap: 8 }}>
+            {PROJECT_HEADER_COLORS.map(hex => (
+              <button
+                key={hex}
+                onClick={() => setNewProjectColor(hex)}
+                style={{ width: 26, height: 26, borderRadius: "50%", background: hex, cursor: "pointer", border: `2.5px solid ${hex === newProjectColor ? ACCENT_COLOR : "#ffffff"}` }}
+              />
+            ))}
+          </div>
           <button
             onClick={createProject}
             disabled={savingProject || !newProjectName.trim()}
@@ -539,7 +553,7 @@ export default function KanbanView() {
           projects.map((project, pIdx) => {
             const allTasks = project.kanban_tasks;
             const cardBg = pIdx % 2 === 0 ? "#FFFFFF" : "#FBF9FF";
-            const headerColor = PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
+            const headerColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
 
             const isProjectDragOver = projectDragOverId === project.id && draggedProjectId !== project.id;
 
@@ -563,7 +577,7 @@ export default function KanbanView() {
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 220 }}>
                       <span style={{ color: "#C7C0DC", fontSize: 15, lineHeight: 1, userSelect: "none" }}>⠿</span>
-                      <div style={{ width: 38, height: 38, borderRadius: 12, background: headerColor, flexShrink: 0 }} />
+                      <div style={{ width: 38, height: 38, borderRadius: 12, background: editingProjectId === project.id ? editProjectColor : headerColor, flexShrink: 0 }} />
                       {editingProjectId === project.id ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 200 }}>
                           <input
@@ -579,6 +593,18 @@ export default function KanbanView() {
                             placeholder="Description (optional)"
                             style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 13, outline: "none" }}
                           />
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {PROJECT_HEADER_COLORS.map(hex => (
+                              <button
+                                key={hex}
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setEditProjectColor(hex);
+                                }}
+                                style={{ width: 22, height: 22, borderRadius: "50%", background: hex, cursor: "pointer", border: `2.5px solid ${hex === editProjectColor ? ACCENT_COLOR : "#ffffff"}` }}
+                              />
+                            ))}
+                          </div>
                         </div>
                       ) : (
                         <div>
