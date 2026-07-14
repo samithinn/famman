@@ -11,9 +11,16 @@ const DENSITY: "cozy" | "compact" = "cozy";
 const SHOW_DESCRIPTION_ON_CARD = true;
 
 const PALETTE = ["#FFD9E8", "#FFE3C2", "#FFF3B0", "#C8F0DA", "#CBEBFF", "#E3D9FF"];
-const PROJECT_HEADER_COLORS = ["#FFD9E8", "#CBEBFF", "#C8F0DA", "#FFE3C2", "#E3D9FF", "#FFF3B0"];
-const PROJECT_ICON_COLOR = "#E3D9FF";
-const PROJECT_ICONS = ["📁", "🏠", "🚀", "🎯", "⭐", "🎨", "📌", "💡", "🔥", "🌈", "🐱", "🍀"];
+const PROJECT_HEADER_COLORS = [
+  "#FFD9E8", "#CBEBFF", "#C8F0DA", "#FFE3C2", "#E3D9FF", "#FFF3B0",
+  "#FFD9D9", "#D9FFF5", "#F5D9FF", "#D9F5FF", "#FFEBD9", "#E8FFD9",
+  "#F0D9EE", "#D9E0FF", "#FFF5D9", "#DCD9FF",
+];
+const PROJECT_ICONS = [
+  "📁", "🏠", "🚀", "🎯", "⭐", "🎨", "📌", "💡", "🔥", "🌈", "🐱", "🍀",
+  "📚", "🌸", "🍋", "🐰", "🦋", "🌙", "☁️", "🍉", "🧸", "🎀", "🌻", "🍑",
+  "🐣", "🌊", "🧁", "🍄", "🐹", "🎈", "🌼", "🐥",
+];
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -855,6 +862,15 @@ export default function KanbanView() {
             placeholder="Description (optional)"
             style={{ padding: "9px 12px", borderRadius: 10, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 13.5, outline: "none", flex: 1, minWidth: 200 }}
           />
+          <div style={{ display: "flex", gap: 8 }}>
+            {PROJECT_HEADER_COLORS.map(hex => (
+              <button
+                key={hex}
+                onClick={() => setNewProjectColor(hex)}
+                style={{ width: 26, height: 26, borderRadius: "50%", background: hex, cursor: "pointer", border: `2.5px solid ${hex === newProjectColor ? ACCENT_COLOR : "#ffffff"}` }}
+              />
+            ))}
+          </div>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 220 }}>
             {PROJECT_ICONS.map(icon => (
               <button
@@ -903,7 +919,7 @@ export default function KanbanView() {
           activeProjects.map((project, pIdx) => {
             const allTasks = project.kanban_tasks;
             const cardBg = pIdx % 2 === 0 ? "#FFFFFF" : "#FBF9FF";
-            const headerColor = PROJECT_ICON_COLOR;
+            const headerColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
 
             const isProjectDragOver = projectDragOverId === project.id && draggedProjectId !== project.id;
             const isExpanded = expandedProjectIds.includes(project.id);
@@ -930,7 +946,7 @@ export default function KanbanView() {
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 220 }}>
                       <span style={{ color: "#C7C0DC", fontSize: 15, lineHeight: 1, userSelect: "none" }}>⠿</span>
-                      <div style={{ width: 38, height: 38, borderRadius: 12, background: headerColor, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: 12, background: editingProjectId === project.id ? editProjectColor : headerColor, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
                         {editingProjectId === project.id ? editProjectIcon : (project.icon ?? PROJECT_ICONS[0])}
                       </div>
                       {editingProjectId === project.id ? (
@@ -948,6 +964,18 @@ export default function KanbanView() {
                             placeholder="Description (optional)"
                             style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 13, outline: "none" }}
                           />
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {PROJECT_HEADER_COLORS.map(hex => (
+                              <button
+                                key={hex}
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setEditProjectColor(hex);
+                                }}
+                                style={{ width: 22, height: 22, borderRadius: "50%", background: hex, cursor: "pointer", border: `2.5px solid ${hex === editProjectColor ? ACCENT_COLOR : "#ffffff"}` }}
+                              />
+                            ))}
+                          </div>
                           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 220 }}>
                             {PROJECT_ICONS.map(icon => (
                               <button
@@ -1217,7 +1245,7 @@ export default function KanbanView() {
                       )}
                     </div>
                     {dayTasks.slice(0, maxChips).map(({ project, task }) => {
-                      const chipColor = PROJECT_ICON_COLOR;
+                      const chipColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
                       return (
                         <button
                           key={task.id}
@@ -1303,7 +1331,7 @@ export default function KanbanView() {
             <div style={{ color: "#9A93AC", fontSize: 14 }}>No completed projects yet — finish every task in a project to mark it complete.</div>
           ) : (
             completedProjects.map(project => {
-              const headerColor = PROJECT_ICON_COLOR;
+              const headerColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
               return (
                 <div key={project.id} style={{ background: "#FFFFFF", border: "1px solid #EFEAFA", borderRadius: 20, padding: "22px 22px 24px", boxShadow: "0 1px 3px rgba(45,43,58,0.04)" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 14 }}>
