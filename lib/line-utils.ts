@@ -377,13 +377,7 @@ export function buildSummaryFlex(data: SummaryData, preferences?: SummaryBlock[]
   if (show("category_breakdown") && data.categoryBreakdown.length > 0) {
     body.push({ type: "separator", margin: "lg", color: PASTEL.separator });
     body.push({ type: "text", text: "แยกตามหมวดหมู่", size: "xs", color: PASTEL.textMuted, weight: "bold", margin: "lg" });
-    const top = data.categoryBreakdown.slice(0, 5);
-    const rest = data.categoryBreakdown.slice(5);
-    for (const item of top) body.push(categoryRow(item));
-    if (rest.length > 0) {
-      const restTotal = rest.reduce((sum, r) => sum + r.amount, 0);
-      body.push(categoryRow({ category: "Other", amount: restTotal }));
-    }
+    for (const item of data.categoryBreakdown) body.push(categoryRow(item));
   }
 
   if (show("budget") && data.budget && data.budget > 0) {
