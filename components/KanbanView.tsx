@@ -363,6 +363,14 @@ export default function KanbanView() {
     e.dataTransfer.effectAllowed = "move";
   }
 
+  function onCardDragEnd() {
+    // dragend always fires exactly once, even if the drop lands outside any
+    // valid target (or the drag is cancelled) — dragleave/drop don't, which
+    // is what left the hover highlight stuck on a card intermittently.
+    setTaskDragOverId(null);
+    setDragOverKey(null);
+  }
+
   function onColDragOver(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     const key = e.currentTarget.getAttribute("data-project-id") + ":" + e.currentTarget.getAttribute("data-column-id");
@@ -785,6 +793,7 @@ export default function KanbanView() {
                                   data-project-id={project.id}
                                   data-task-id={task.id}
                                   onDragStart={onCardDragStart}
+                                  onDragEnd={onCardDragEnd}
                                   onDragOver={onTaskDragOver}
                                   onDragLeave={onTaskDragLeave}
                                   onDrop={onTaskDrop}
