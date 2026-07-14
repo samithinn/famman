@@ -466,14 +466,8 @@ export default function KanbanView() {
     <div style={{ minHeight: "100%", width: "100%", background: "#FAF8FF", fontFamily: "'Nunito',sans-serif", color: "#2D2B3A", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "20px 32px", borderBottom: "1px solid #ECE7FA", background: "#FFFFFF" }}>
-        <div style={{ width: 36, height: 36, borderRadius: 11, background: ACCENT_COLOR, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="1" y="1" width="4.5" height="16" rx="1.5" fill="#fff" fillOpacity="0.95" />
-            <rect x="6.75" y="1" width="4.5" height="10" rx="1.5" fill="#fff" fillOpacity="0.75" />
-            <rect x="12.5" y="1" width="4.5" height="13" rx="1.5" fill="#fff" fillOpacity="0.55" />
-          </svg>
-        </div>
-        <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 20 }}>FamMan x KANBAN</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/kanban-header.png" alt="FamMan x KANBAN" style={{ height: 44, width: "auto" }} />
       </div>
 
       {/* Filters toolbar */}
