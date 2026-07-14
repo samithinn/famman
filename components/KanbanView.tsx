@@ -85,6 +85,10 @@ function daysLeftLabel(iso: string | null): string {
   return `${diff} days left`;
 }
 
+function priorityLabel(priority: string): string {
+  return priority === "High" ? "High 🔥" : priority;
+}
+
 function colorIndexForId(id: string, mod: number): number {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
@@ -478,7 +482,7 @@ export default function KanbanView() {
           style={{ background: "#F7F5FC", border: "none", borderRadius: 10, padding: "8px 12px", fontFamily: "'Nunito',sans-serif", fontSize: 13, fontWeight: 700, color: "#5C5570", outline: "none", cursor: "pointer" }}
         >
           <option value="All">All priorities</option>
-          <option value="High">High</option>
+          <option value="High">High 🔥</option>
           <option value="Medium">Medium</option>
           <option value="Low">Low</option>
         </select>
@@ -691,7 +695,7 @@ export default function KanbanView() {
                                       {formatDate(task.due_date)}
                                     </span>
                                     <span style={{ fontSize: 11, fontWeight: 700, color: urgent ? "#C0392B" : "#5C5570", whiteSpace: "nowrap" }}>({daysLeftLabel(task.due_date)})</span>
-                                    <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 100, background: meta.bg, color: meta.fg, whiteSpace: "nowrap" }}>{task.priority}</span>
+                                    <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 100, background: meta.bg, color: meta.fg, whiteSpace: "nowrap" }}>{priorityLabel(task.priority)}</span>
                                   </div>
                                 </div>
                               );
@@ -772,11 +776,11 @@ export default function KanbanView() {
                     onChange={onFormChange}
                     style={{ flex: 1, padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 14.5, outline: "none", background: "#fff" }}
                   >
-                    <option value="High">High (Fire)</option>
+                    <option value="High">High 🔥</option>
                     <option value="Medium">Medium</option>
                     <option value="Low">Low</option>
                   </select>
-                  <span style={{ fontSize: 11.5, fontWeight: 800, padding: "6px 12px", borderRadius: 100, whiteSpace: "nowrap", background: modalMeta.bg, color: modalMeta.fg }}>{modalForm.priority}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, padding: "6px 12px", borderRadius: 100, whiteSpace: "nowrap", background: modalMeta.bg, color: modalMeta.fg }}>{priorityLabel(modalForm.priority)}</span>
                 </div>
               </div>
 
