@@ -466,7 +466,18 @@ export default function KanbanView() {
     <div style={{ minHeight: "100%", width: "100%", background: "#FAF8FF", fontFamily: "'Nunito',sans-serif", color: "#2D2B3A", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "20px 32px", borderBottom: "1px solid #ECE7FA", background: "#FFFFFF" }}>
-        <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 20 }}>FamMan x KANBAN</span>
+        <div style={{ width: 36, height: 36, borderRadius: 11, background: ACCENT_COLOR, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 3px 8px rgba(108,92,231,0.35)" }}>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1" y="1" width="4.5" height="16" rx="1.5" fill="#fff" fillOpacity="0.95" />
+            <rect x="6.75" y="1" width="4.5" height="10" rx="1.5" fill="#fff" fillOpacity="0.75" />
+            <rect x="12.5" y="1" width="4.5" height="13" rx="1.5" fill="#fff" fillOpacity="0.55" />
+          </svg>
+        </div>
+        <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 21 }}>
+          <span style={{ color: "#2D2B3A" }}>FamMan</span>
+          <span style={{ color: "#C7C0DC", margin: "0 7px", fontWeight: 800 }}>×</span>
+          <span style={{ color: ACCENT_COLOR, letterSpacing: "0.03em" }}>KANBAN</span>
+        </span>
       </div>
 
       {/* Filters toolbar */}
