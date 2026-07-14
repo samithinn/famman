@@ -51,6 +51,7 @@ type KanbanProject = {
   icon: string | null;
   position: number;
   created_at: string;
+  completed_at: string | null;
   kanban_tasks: KanbanTask[];
 };
 
@@ -144,7 +145,8 @@ export default function KanbanView() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("All");
-  const [kanbanTab, setKanbanTab] = useState<"board" | "calendar">("board");
+  const [kanbanTab, setKanbanTab] = useState<"board" | "calendar" | "completed">("board");
+  const [completingProjectId, setCompletingProjectId] = useState<string | null>(null);
   const [calendarCursor, setCalendarCursor] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -269,6 +271,36 @@ export default function KanbanView() {
       setError("Failed to delete project.");
       loadProjects();
     }
+  }
+
+  async function completeProject(projectId: string) {
+    setCompletingProjectId(projectId);
+    const res = await fetch("/api/kanban/projects", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: projectId, completed: true }),
+    });
+    setCompletingProjectId(null);
+    if (!res.ok) {
+      setError("Failed to complete project.");
+      return;
+    }
+    const { project } = await res.json();
+    setProjects(prev => prev.map(p => (p.id === project.id ? { ...p, completed_at: project.completed_at } : p)));
+  }
+
+  async function reopenProject(projectId: string) {
+    const res = await fetch("/api/kanban/projects", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: projectId, completed: false }),
+    });
+    if (!res.ok) {
+      setError("Failed to reopen project.");
+      return;
+    }
+    const { project } = await res.json();
+    setProjects(prev => prev.map(p => (p.id === project.id ? { ...p, completed_at: project.completed_at } : p)));
   }
 
   function onAddTaskClick(e: React.MouseEvent<HTMLButtonElement>) {
@@ -604,7 +636,12 @@ export default function KanbanView() {
   const query = searchQuery.trim().toLowerCase();
   const modalMeta = PRIORITY_META[modalForm.priority] ?? PRIORITY_META.Medium;
 
-  const filteredTaskEntries = projects
+  const activeProjects = projects.filter(p => !p.completed_at);
+  const completedProjects = projects
+    .filter(p => p.completed_at)
+    .sort((a, b) => (b.completed_at! < a.completed_at! ? -1 : b.completed_at! > a.completed_at! ? 1 : 0));
+
+  const filteredTaskEntries = activeProjects
     .flatMap(p => p.kanban_tasks.map(task => ({ project: p, task })))
     .filter(({ task }) => !query || task.title.toLowerCase().includes(query))
     .filter(({ task }) => priorityFilter === "All" || task.priority === priorityFilter);
@@ -619,7 +656,7 @@ export default function KanbanView() {
   const now = new Date();
   const todayStr = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
   const upcomingTasks = filteredTaskEntries
-    .filter(({ task }) => task.due_date && task.due_date >= todayStr)
+    .filter(({ task }) => task.due_date && task.due_date >= todayStr && task.status !== "Done")
     .sort((a, b) => (a.task.due_date! < b.task.due_date! ? -1 : a.task.due_date! > b.task.due_date! ? 1 : 0))
     .slice(0, 8);
 
@@ -674,6 +711,12 @@ export default function KanbanView() {
             style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: kanbanTab === "calendar" ? "#fff" : "transparent", color: kanbanTab === "calendar" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: kanbanTab === "calendar" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
           >
             Calendar
+          </button>
+          <button
+            onClick={() => setKanbanTab("completed")}
+            style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: kanbanTab === "completed" ? "#fff" : "transparent", color: kanbanTab === "completed" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: kanbanTab === "completed" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+          >
+            Completed{completedProjects.length > 0 ? ` (${completedProjects.length})` : ""}
           </button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#F7F5FC", borderRadius: 10, padding: "8px 12px", flex: "0 0 auto", width: 260 }}>
@@ -763,16 +806,17 @@ export default function KanbanView() {
       <div style={{ flex: 1, padding: 32, overflow: "auto", display: "flex", flexDirection: "column", gap: 44 }}>
         {loading ? (
           <div style={{ color: "#9A93AC", fontSize: 14 }}>Loading...</div>
-        ) : projects.length === 0 ? (
+        ) : activeProjects.length === 0 ? (
           <div style={{ color: "#9A93AC", fontSize: 14 }}>No projects yet — click "+ New Project" to create your first Kanban board.</div>
         ) : (
-          projects.map((project, pIdx) => {
+          activeProjects.map((project, pIdx) => {
             const allTasks = project.kanban_tasks;
             const cardBg = pIdx % 2 === 0 ? "#FFFFFF" : "#FBF9FF";
             const headerColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
 
             const isProjectDragOver = projectDragOverId === project.id && draggedProjectId !== project.id;
             const isExpanded = expandedProjectIds.includes(project.id);
+            const allTasksDone = allTasks.length > 0 && allTasks.every(t => t.status === "Done");
 
             return (
               <div
@@ -894,6 +938,21 @@ export default function KanbanView() {
                       )}
                     </div>
                   </div>
+
+                  {allTasksDone && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", background: "#EAFBF1", border: "1px solid #BFEFD4", borderRadius: 12, padding: "10px 14px", marginBottom: isExpanded ? 18 : 0 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#2F9E63" }}>
+                        🎉 All tasks done — mark this project as complete?
+                      </span>
+                      <button
+                        onClick={() => completeProject(project.id)}
+                        disabled={completingProjectId === project.id}
+                        style={{ background: "#2F9E63", border: "none", borderRadius: 8, padding: "7px 14px", color: "#fff", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", opacity: completingProjectId === project.id ? 0.6 : 1, flexShrink: 0 }}
+                      >
+                        {completingProjectId === project.id ? "Completing..." : "Mark project complete"}
+                      </button>
+                    </div>
+                  )}
 
                   {/* Board */}
                   {isExpanded && (
@@ -1058,21 +1117,22 @@ export default function KanbanView() {
                         onClick={() => openTaskEditor(project.id, task)}
                         title={`${project.name}: ${task.title}`}
                         style={{
+                          display: "block",
                           textAlign: "left",
                           background: chipColor,
                           border: "none",
                           borderRadius: 6,
                           padding: "3px 6px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#332F45",
                           cursor: "pointer",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
+                          width: "100%",
                         }}
                       >
-                        {task.title}
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#332F45", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {task.title}
+                        </div>
+                        <div style={{ fontSize: 9.5, fontWeight: 700, color: "#5C5570", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {project.icon ?? PROJECT_ICONS[0]} {project.name}
+                        </div>
                       </button>
                     );
                   })}
@@ -1086,14 +1146,70 @@ export default function KanbanView() {
         </div>
       )}
 
+      {/* Completed projects (history) */}
+      {kanbanTab === "completed" && (
+        <div style={{ flex: 1, padding: 32, overflow: "auto", display: "flex", flexDirection: "column", gap: 20 }}>
+          {completedProjects.length === 0 ? (
+            <div style={{ color: "#9A93AC", fontSize: 14 }}>No completed projects yet — finish every task in a project to mark it complete.</div>
+          ) : (
+            completedProjects.map(project => {
+              const headerColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
+              return (
+                <div key={project.id} style={{ background: "#FFFFFF", border: "1px solid #EFEAFA", borderRadius: 20, padding: "22px 22px 24px", boxShadow: "0 1px 3px rgba(45,43,58,0.04)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: 12, background: headerColor, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+                        {project.icon ?? PROJECT_ICONS[0]}
+                      </div>
+                      <div>
+                        <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 19 }}>{project.name}</div>
+                        {project.description && <div style={{ fontSize: 13, color: "#9A93AC" }}>{project.description}</div>}
+                        <div style={{ fontSize: 11.5, color: "#2F9E63", fontWeight: 700, marginTop: 2 }}>
+                          ✓ Completed {project.completed_at ? formatDayMonth(project.completed_at.slice(0, 10)) : ""}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => reopenProject(project.id)}
+                      style={{ background: "#F3F0FC", border: "none", borderRadius: 10, padding: "8px 16px", color: "#6C5CE7", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", flexShrink: 0 }}
+                    >
+                      Reopen project
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {project.kanban_tasks.map(task => (
+                      <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#F7F5FC", borderRadius: 10 }}>
+                        <span style={{ color: "#2F9E63", fontSize: 13 }}>✓</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#5C5570", textDecoration: "line-through", flex: 1 }}>{task.title}</span>
+                        {task.due_date && <span style={{ fontSize: 11, color: "#9A93AC" }}>{formatDate(task.due_date)}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
       {/* Modal / slide-over */}
-      {modal.open && (
+      {modal.open && (() => {
+        const modalProject = projects.find(p => p.id === modal.projectId);
+        return (
         <>
           <div onClick={closeModal} style={{ position: "fixed", inset: 0, background: "rgba(45,43,58,0.32)", zIndex: 40 }} />
           <div style={{ position: "fixed", top: 0, right: 0, height: "100vh", width: 420, maxWidth: "92vw", background: "#fff", zIndex: 41, boxShadow: "-16px 0 48px rgba(45,43,58,0.16)", display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "24px 26px", borderBottom: "1px solid #F1EDFA", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 19 }}>{modal.mode === "edit" ? "Edit task" : "New task"}</div>
-              <button onClick={closeModal} style={{ border: "none", background: "#F5F2FC", width: 30, height: 30, borderRadius: "50%", color: "#6b6480", fontSize: 14, cursor: "pointer" }}>✕</button>
+            <div style={{ padding: "24px 26px", borderBottom: "1px solid #F1EDFA" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 19 }}>{modal.mode === "edit" ? "Edit task" : "New task"}</div>
+                <button onClick={closeModal} style={{ border: "none", background: "#F5F2FC", width: 30, height: 30, borderRadius: "50%", color: "#6b6480", fontSize: 14, cursor: "pointer" }}>✕</button>
+              </div>
+              {modalProject && (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, background: "#F3F0FC", borderRadius: 100, padding: "4px 12px 4px 6px" }}>
+                  <span style={{ fontSize: 13 }}>{modalProject.icon ?? PROJECT_ICONS[0]}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 800, color: "#6C5CE7" }}>{modalProject.name}</span>
+                </div>
+              )}
             </div>
 
             <div style={{ padding: "24px 26px", overflow: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
@@ -1173,7 +1289,8 @@ export default function KanbanView() {
             </div>
           </div>
         </>
-      )}
+        );
+      })()}
     </div>
   );
 }

@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase
     .from("kanban_projects")
     .insert({ user_id: user.id, name, description: description || null, color, icon, position })
-    .select("id, name, description, color, icon, position, created_at")
+    .select("id, name, description, color, icon, position, created_at, completed_at")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -74,6 +74,7 @@ export async function PATCH(req: NextRequest) {
   if (body.description !== undefined) update.description = (body.description ?? "").trim() || null;
   if (body.color !== undefined) update.color = (body.color ?? "").trim() || null;
   if (body.icon !== undefined) update.icon = (body.icon ?? "").trim() || null;
+  if (body.completed !== undefined) update.completed_at = body.completed ? new Date().toISOString() : null;
 
   if (Object.keys(update).length === 0)
     return NextResponse.json({ error: "no fields to update" }, { status: 400 });
@@ -83,7 +84,7 @@ export async function PATCH(req: NextRequest) {
     .update(update)
     .eq("id", id)
     .eq("user_id", user.id)
-    .select("id, name, description, color, icon, position, created_at");
+    .select("id, name, description, color, icon, position, created_at, completed_at");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0)
