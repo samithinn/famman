@@ -16,7 +16,7 @@ const PROJECT_ICONS = ["📁", "🏠", "🚀", "🎯", "⭐", "🎨", "📌", "�
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const PRIORITY_META: Record<string, { bg: string; fg: string; accent: string }> = {
   High: { bg: "#FFDCD3", fg: "#C0392B", accent: "#E8574C" },
@@ -129,8 +129,32 @@ function dateKey(y: number, m: number, d: number): string {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
+function getMonday(d: Date): Date {
+  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = date.getDay();
+  date.setDate(date.getDate() + (day === 0 ? -6 : 1 - day));
+  return date;
+}
+
+function getWeekDays(reference: Date): { key: string; day: number; date: Date }[] {
+  const monday = getMonday(reference);
+  const days: { key: string; day: number; date: Date }[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+    days.push({ key: dateKey(d.getFullYear(), d.getMonth(), d.getDate()), day: d.getDate(), date: d });
+  }
+  return days;
+}
+
+function formatWeekRange(start: Date, end: Date): string {
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  if (sameMonth) return `${MONTH_SHORT[start.getMonth()]} ${start.getDate()}–${end.getDate()}, ${start.getFullYear()}`;
+  return `${MONTH_SHORT[start.getMonth()]} ${start.getDate()} – ${MONTH_SHORT[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
+}
+
 function getCalendarDays(year: number, month: number): { key: string; day: number; inMonth: boolean }[] {
-  const startDay = new Date(year, month, 1).getDay();
+  const firstDay = new Date(year, month, 1).getDay();
+  const startDay = (firstDay + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const totalCells = Math.ceil((startDay + daysInMonth) / 7) * 7;
   const cells: { key: string; day: number; inMonth: boolean }[] = [];
@@ -157,6 +181,8 @@ export default function KanbanView() {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
   });
+  const [calendarViewMode, setCalendarViewMode] = useState<"month" | "week">("month");
+  const [weekCursor, setWeekCursor] = useState(() => new Date());
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [taskDragOverId, setTaskDragOverId] = useState<string | null>(null);
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
@@ -324,9 +350,28 @@ export default function KanbanView() {
     setCalendarCursor(prev => (prev.month === 11 ? { year: prev.year + 1, month: 0 } : { year: prev.year, month: prev.month + 1 }));
   }
 
+  function goToPrevWeek() {
+    setWeekCursor(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() - 7));
+  }
+
+  function goToNextWeek() {
+    setWeekCursor(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() + 7));
+  }
+
+  function goToPrevPeriod() {
+    if (calendarViewMode === "week") goToPrevWeek();
+    else goToPrevMonth();
+  }
+
+  function goToNextPeriod() {
+    if (calendarViewMode === "week") goToNextWeek();
+    else goToNextMonth();
+  }
+
   function goToToday() {
     const d = new Date();
     setCalendarCursor({ year: d.getFullYear(), month: d.getMonth() });
+    setWeekCursor(new Date());
   }
 
   function openTaskEditor(projectId: string, task: KanbanTask) {
@@ -667,7 +712,10 @@ export default function KanbanView() {
     .slice(0, 8);
 
   const calendarDays = getCalendarDays(calendarCursor.year, calendarCursor.month);
-  const calendarMonthPrefix = `${calendarCursor.year}-${String(calendarCursor.month + 1).padStart(2, "0")}`;
+  const weekDays = getWeekDays(weekCursor);
+  const periodYear = calendarViewMode === "week" ? weekCursor.getFullYear() : calendarCursor.year;
+  const periodMonth = calendarViewMode === "week" ? weekCursor.getMonth() : calendarCursor.month;
+  const calendarMonthPrefix = `${periodYear}-${String(periodMonth + 1).padStart(2, "0")}`;
   const periodTaskEntries = filteredTaskEntries
     .filter(({ task }) => task.due_date && task.due_date.startsWith(calendarMonthPrefix))
     .sort((a, b) => (a.task.due_date! < b.task.due_date! ? -1 : a.task.due_date! > b.task.due_date! ? 1 : 0));
@@ -675,6 +723,20 @@ export default function KanbanView() {
     ...col,
     entries: periodTaskEntries.filter(({ task }) => task.status === col.id),
   }));
+
+  const CAL = {
+    bg: "#FBF8F2",
+    border: "#EDE6D6",
+    borderMuted: "#F5F1E7",
+    ink: "#2B2A28",
+    muted: "#9A9488",
+    todayAccent: "#FF7A45",
+    pill: "#FFFFFF",
+    pillBorder: "#E7E1D2",
+    toggleActiveBg: "#232323",
+    toggleActiveText: "#FFFFFF",
+    cardBg: "#F5F1E7",
+  };
 
   return (
     <div style={{ minHeight: "100%", width: "100%", background: "#FAF8FF", fontFamily: "'Nunito',sans-serif", color: "#2D2B3A", display: "flex", flexDirection: "column" }}>
@@ -1071,50 +1133,67 @@ export default function KanbanView() {
 
       {/* Calendar */}
       {kanbanTab === "calendar" && (
-        <div style={{ flex: 1, padding: 32, overflow: "auto", display: "flex", gap: 24, alignItems: "flex-start" }}>
+        <div style={{ flex: 1, padding: 32, overflow: "auto", display: "flex", gap: 24, alignItems: "flex-start", background: CAL.bg }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
-              <button
-                onClick={goToPrevMonth}
-                style={{ width: 32, height: 32, borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
-              >
-                ‹
-              </button>
-              <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 18, minWidth: 170, textAlign: "center" }}>
-                {MONTH_NAMES[calendarCursor.month]} {calendarCursor.year}
-              </span>
-              <button
-                onClick={goToNextMonth}
-                style={{ width: 32, height: 32, borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
-              >
-                ›
-              </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
               <button
                 onClick={goToToday}
-                style={{ padding: "7px 14px", borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+                style={{ padding: "8px 16px", borderRadius: 100, border: `1px solid ${CAL.pillBorder}`, background: CAL.pill, color: CAL.ink, fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
               >
                 Today
               </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, background: CAL.pill, border: `1px solid ${CAL.pillBorder}`, borderRadius: 100, padding: 4 }}>
+                <button
+                  onClick={goToPrevPeriod}
+                  style={{ width: 28, height: 28, borderRadius: "50%", border: "none", background: "transparent", color: CAL.ink, fontWeight: 800, fontSize: 14, cursor: "pointer" }}
+                >
+                  ‹
+                </button>
+                <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 15, minWidth: 150, textAlign: "center", color: CAL.ink }}>
+                  {calendarViewMode === "week" ? formatWeekRange(weekDays[0].date, weekDays[6].date) : `${MONTH_NAMES[calendarCursor.month]} ${calendarCursor.year}`}
+                </span>
+                <button
+                  onClick={goToNextPeriod}
+                  style={{ width: 28, height: 28, borderRadius: "50%", border: "none", background: "transparent", color: CAL.ink, fontWeight: 800, fontSize: 14, cursor: "pointer" }}
+                >
+                  ›
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 2, background: CAL.pill, border: `1px solid ${CAL.pillBorder}`, borderRadius: 100, padding: 4 }}>
+                <button
+                  onClick={() => setCalendarViewMode("month")}
+                  style={{ padding: "7px 16px", borderRadius: 100, border: "none", background: calendarViewMode === "month" ? CAL.toggleActiveBg : "transparent", color: calendarViewMode === "month" ? CAL.toggleActiveText : CAL.muted, fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+                >
+                  Month
+                </button>
+                <button
+                  onClick={() => setCalendarViewMode("week")}
+                  style={{ padding: "7px 16px", borderRadius: 100, border: "none", background: calendarViewMode === "week" ? CAL.toggleActiveBg : "transparent", color: calendarViewMode === "week" ? CAL.toggleActiveText : CAL.muted, fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+                >
+                  Week
+                </button>
+              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
               {WEEKDAY_SHORT.map(d => (
-                <div key={d} style={{ textAlign: "center", fontSize: 12, fontWeight: 800, color: "#9A93AC", padding: "4px 0" }}>
+                <div key={d} style={{ textAlign: "center", fontSize: 12, fontWeight: 800, color: CAL.muted, padding: "4px 0" }}>
                   {d}
                 </div>
               ))}
-              {calendarDays.map(cell => {
+              {(calendarViewMode === "week" ? weekDays.map(d => ({ key: d.key, day: d.day, inMonth: true })) : calendarDays).map(cell => {
                 const dayTasks = tasksByDate[cell.key] ?? [];
                 const isToday = cell.key === todayStr;
+                const maxChips = calendarViewMode === "week" ? 6 : 3;
                 return (
                   <div
                     key={cell.key}
                     style={{
-                      height: 108,
+                      height: calendarViewMode === "week" ? 260 : 108,
                       borderRadius: 12,
                       padding: 8,
-                      background: cell.inMonth ? "#FFFFFF" : "#FAF8FF",
-                      border: isToday ? `2px solid ${ACCENT_COLOR}` : "1px solid #EFEAFA",
+                      background: cell.inMonth ? "#FFFFFF" : CAL.borderMuted,
+                      border: isToday ? `2px solid ${CAL.todayAccent}` : `1px solid ${CAL.border}`,
                       opacity: cell.inMonth ? 1 : 0.55,
                       display: "flex",
                       flexDirection: "column",
@@ -1123,16 +1202,16 @@ export default function KanbanView() {
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 700, color: isToday ? ACCENT_COLOR : "#5C5570" }}>
+                      <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 700, color: isToday ? CAL.todayAccent : CAL.ink }}>
                         {cell.day}
                       </span>
                       {isToday && (
-                        <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: ACCENT_COLOR, borderRadius: 100, padding: "1px 7px" }}>
+                        <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: CAL.todayAccent, borderRadius: 100, padding: "1px 7px" }}>
                           Today
                         </span>
                       )}
                     </div>
-                    {dayTasks.slice(0, 3).map(({ project, task }) => {
+                    {dayTasks.slice(0, maxChips).map(({ project, task }) => {
                       const chipColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
                       return (
                         <button
@@ -1160,8 +1239,8 @@ export default function KanbanView() {
                         </button>
                       );
                     })}
-                    {dayTasks.length > 3 && (
-                      <span style={{ fontSize: 10.5, color: "#9A93AC", fontWeight: 700 }}>+{dayTasks.length - 3} more</span>
+                    {dayTasks.length > maxChips && (
+                      <span style={{ fontSize: 10.5, color: CAL.muted, fontWeight: 700 }}>+{dayTasks.length - maxChips} more</span>
                     )}
                   </div>
                 );
@@ -1169,36 +1248,36 @@ export default function KanbanView() {
             </div>
           </div>
 
-          <div style={{ width: 280, flexShrink: 0, background: "#FFFFFF", border: "1px solid #EFEAFA", borderRadius: 16, padding: "18px 16px", boxShadow: "0 1px 3px rgba(45,43,58,0.04)" }}>
-            <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 16 }}>Kanban</div>
-            <div style={{ fontSize: 12, color: "#9A93AC", marginBottom: 16 }}>Content in the period you're viewing</div>
+          <div style={{ width: 280, flexShrink: 0, background: "#FFFFFF", border: `1px solid ${CAL.border}`, borderRadius: 16, padding: "18px 16px", boxShadow: "0 1px 3px rgba(45,43,58,0.04)" }}>
+            <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 16, color: CAL.ink }}>Kanban</div>
+            <div style={{ fontSize: 12, color: CAL.muted, marginBottom: 16 }}>Content in the period you're viewing</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               {periodTasksByColumn.map(col => (
                 <div key={col.id}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: STATUS_DOT_COLOR[col.id] ?? ACCENT_COLOR, flexShrink: 0 }} />
-                    <span style={{ fontSize: 13, fontWeight: 800, color: "#5C5570" }}>{col.label}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#B0A9C4" }}>{col.entries.length}</span>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: STATUS_DOT_COLOR[col.id] ?? CAL.ink, flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 800, color: CAL.ink }}>{col.label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: CAL.muted }}>{col.entries.length}</span>
                   </div>
                   {col.entries.length === 0 ? (
-                    <div style={{ fontSize: 11.5, color: "#C4BFD4", padding: "2px 0 2px 14px" }}>Nothing this month</div>
+                    <div style={{ fontSize: 11.5, color: CAL.muted, padding: "2px 0 2px 14px" }}>Nothing this month</div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {col.entries.map(({ project, task }) => (
                         <button
                           key={task.id}
                           onClick={() => openTaskEditor(project.id, task)}
-                          style={{ display: "block", textAlign: "left", width: "100%", background: "#F7F5FC", border: "none", borderRadius: 10, padding: "8px 10px", cursor: "pointer" }}
+                          style={{ display: "block", textAlign: "left", width: "100%", background: CAL.cardBg, border: "none", borderRadius: 10, padding: "8px 10px", cursor: "pointer" }}
                         >
-                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#332F45", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: CAL.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {task.title}
                           </div>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 3 }}>
-                            <span style={{ fontSize: 10.5, color: "#9A93AC", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            <span style={{ fontSize: 10.5, color: CAL.muted, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                               {project.icon ?? PROJECT_ICONS[0]} {project.name}
                             </span>
                             {task.due_date && (
-                              <span style={{ fontSize: 10.5, color: "#9A93AC", fontWeight: 700, flexShrink: 0 }}>{formatDayMonth(task.due_date)}</span>
+                              <span style={{ fontSize: 10.5, color: CAL.muted, fontWeight: 700, flexShrink: 0 }}>{formatDayMonth(task.due_date)}</span>
                             )}
                           </div>
                         </button>
