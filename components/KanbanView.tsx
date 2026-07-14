@@ -116,6 +116,7 @@ export default function KanbanView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [taskDragOverId, setTaskDragOverId] = useState<string | null>(null);
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
   const [projectDragOverId, setProjectDragOverId] = useState<string | null>(null);
 
@@ -401,6 +402,73 @@ export default function KanbanView() {
     });
     if (!res.ok) {
       setError("Failed to move task.");
+      loadProjects();
+    }
+  }
+
+  function onTaskDragOver(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    const taskId = e.currentTarget.getAttribute("data-task-id")!;
+    if (taskDragOverId !== taskId) setTaskDragOverId(taskId);
+  }
+
+  function onTaskDragLeave() {
+    setTaskDragOverId(null);
+  }
+
+  async function onTaskDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setTaskDragOverId(null);
+    setDragOverKey(null);
+    const targetProjectId = e.currentTarget.getAttribute("data-project-id")!;
+    const targetTaskId = e.currentTarget.getAttribute("data-task-id")!;
+    let payload: { projectId: string; taskId: string } | null = null;
+    try {
+      payload = JSON.parse(e.dataTransfer.getData("text/plain"));
+    } catch {
+      payload = null;
+    }
+    if (!payload || payload.projectId !== targetProjectId || payload.taskId === targetTaskId) return;
+
+    const project = projects.find(p => p.id === targetProjectId);
+    const draggedTask = project?.kanban_tasks.find(t => t.id === payload!.taskId);
+    const targetTask = project?.kanban_tasks.find(t => t.id === targetTaskId);
+    if (!draggedTask || !targetTask) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dropBefore = e.clientY < rect.top + rect.height / 2;
+    const status = targetTask.status;
+
+    const columnTasks = (project?.kanban_tasks ?? [])
+      .filter(t => t.status === status && t.id !== draggedTask.id)
+      .sort((a, b) => a.position - b.position);
+    const targetIdx = columnTasks.findIndex(t => t.id === targetTaskId);
+    const prevTask = dropBefore ? columnTasks[targetIdx - 1] : columnTasks[targetIdx];
+    const nextTask = dropBefore ? columnTasks[targetIdx] : columnTasks[targetIdx + 1];
+
+    const position =
+      prevTask && nextTask ? (prevTask.position + nextTask.position) / 2 :
+      nextTask ? nextTask.position - 1 :
+      prevTask ? prevTask.position + 1 :
+      0;
+
+    setProjects(prev =>
+      prev.map(p =>
+        p.id === targetProjectId
+          ? { ...p, kanban_tasks: p.kanban_tasks.map(t => (t.id === draggedTask.id ? { ...t, status, position } : t)) }
+          : p
+      )
+    );
+
+    const res = await fetch("/api/kanban/tasks", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: draggedTask.id, status, position }),
+    });
+    if (!res.ok) {
+      setError("Failed to reorder task.");
       loadProjects();
     }
   }
@@ -703,6 +771,9 @@ export default function KanbanView() {
                                   data-project-id={project.id}
                                   data-task-id={task.id}
                                   onDragStart={onCardDragStart}
+                                  onDragOver={onTaskDragOver}
+                                  onDragLeave={onTaskDragLeave}
+                                  onDrop={onTaskDrop}
                                   onClick={onCardClick}
                                   style={{
                                     position: "relative",
@@ -712,6 +783,8 @@ export default function KanbanView() {
                                     padding: cardPadding,
                                     cursor: "grab",
                                     boxShadow: "0 1px 2px rgba(45,43,58,0.06)",
+                                    outline: taskDragOverId === task.id ? `2px dashed ${ACCENT_COLOR}` : "2px dashed transparent",
+                                    outlineOffset: 2,
                                   }}
                                 >
                                   <button
