@@ -42,6 +42,7 @@ type KanbanProject = {
   id: string;
   name: string;
   description: string | null;
+  position: number;
   created_at: string;
   kanban_tasks: KanbanTask[];
 };
@@ -104,6 +105,8 @@ export default function KanbanView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
+  const [projectDragOverId, setProjectDragOverId] = useState<string | null>(null);
 
   const [modal, setModal] = useState<ModalState>({ open: false });
   const [modalForm, setModalForm] = useState<ModalForm>(EMPTY_FORM);
@@ -331,6 +334,58 @@ export default function KanbanView() {
     }
   }
 
+  function onProjectDragStart(e: React.DragEvent<HTMLDivElement>) {
+    const projectId = e.currentTarget.getAttribute("data-project-id")!;
+    e.dataTransfer.setData("application/x-kanban-project", projectId);
+    e.dataTransfer.effectAllowed = "move";
+    setDraggedProjectId(projectId);
+  }
+
+  function onProjectDragEnd() {
+    setDraggedProjectId(null);
+    setProjectDragOverId(null);
+  }
+
+  function onProjectDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (!e.dataTransfer.types.includes("application/x-kanban-project")) return;
+    e.preventDefault();
+    const projectId = e.currentTarget.getAttribute("data-project-id")!;
+    if (projectDragOverId !== projectId) setProjectDragOverId(projectId);
+  }
+
+  function onProjectDragLeave() {
+    setProjectDragOverId(null);
+  }
+
+  async function onProjectDrop(e: React.DragEvent<HTMLDivElement>) {
+    if (!e.dataTransfer.types.includes("application/x-kanban-project")) return;
+    e.preventDefault();
+    setProjectDragOverId(null);
+    const targetId = e.currentTarget.getAttribute("data-project-id")!;
+    const draggedId = draggedProjectId;
+    setDraggedProjectId(null);
+    if (!draggedId || draggedId === targetId) return;
+
+    const fromIdx = projects.findIndex(p => p.id === draggedId);
+    const toIdx = projects.findIndex(p => p.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const reordered = [...projects];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    setProjects(reordered);
+
+    const res = await fetch("/api/kanban/projects", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order: reordered.map(p => p.id) }),
+    });
+    if (!res.ok) {
+      setError("Failed to reorder projects.");
+      loadProjects();
+    }
+  }
+
   const cardPadding = DENSITY === "compact" ? "11px 12px" : "15px 16px";
   const cardGap = DENSITY === "compact" ? "8px" : "12px";
   const query = searchQuery.trim().toLowerCase();
@@ -420,12 +475,28 @@ export default function KanbanView() {
             const cardBg = pIdx % 2 === 0 ? "#FFFFFF" : "#FBF9FF";
             const headerColor = PROJECT_HEADER_COLORS[pIdx % PROJECT_HEADER_COLORS.length];
 
+            const isProjectDragOver = projectDragOverId === project.id && draggedProjectId !== project.id;
+
             return (
-              <div key={project.id}>
+              <div
+                key={project.id}
+                data-project-id={project.id}
+                onDragOver={onProjectDragOver}
+                onDragLeave={onProjectDragLeave}
+                onDrop={onProjectDrop}
+                style={{ borderRadius: 20, outline: isProjectDragOver ? `2px dashed ${ACCENT_COLOR}` : "2px dashed transparent", outlineOffset: 4, opacity: draggedProjectId === project.id ? 0.5 : 1, transition: "opacity 0.15s" }}
+              >
                 <div style={{ background: cardBg, border: "1px solid #EFEAFA", borderRadius: 20, padding: "22px 22px 24px", boxShadow: "0 1px 3px rgba(45,43,58,0.04)" }}>
                   {/* Project header */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 16, flexWrap: "wrap" }}>
+                  <div
+                    draggable
+                    data-project-id={project.id}
+                    onDragStart={onProjectDragStart}
+                    onDragEnd={onProjectDragEnd}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 16, flexWrap: "wrap", cursor: "grab" }}
+                  >
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ color: "#C7C0DC", fontSize: 15, lineHeight: 1, userSelect: "none" }}>⠿</span>
                       <div style={{ width: 38, height: 38, borderRadius: 12, background: headerColor }} />
                       <div>
                         <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 19 }}>{project.name}</div>

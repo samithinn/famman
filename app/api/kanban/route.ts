@@ -9,9 +9,10 @@ export async function GET() {
   const { data, error } = await supabase
     .from("kanban_projects")
     .select(
-      "id, name, description, created_at, kanban_tasks(id, project_id, title, description, due_date, priority, status, color, position, created_at)"
+      "id, name, description, position, created_at, kanban_tasks(id, project_id, title, description, due_date, priority, status, color, position, created_at)"
     )
     .eq("user_id", user.id)
+    .order("position")
     .order("created_at")
     .order("status", { foreignTable: "kanban_tasks" })
     .order("position", { foreignTable: "kanban_tasks" });
