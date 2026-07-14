@@ -359,7 +359,7 @@ export default function ProfilePage() {
                 Send <code className="font-bold" style={{ color: "#7c3aed" }}>500 Food &amp; Dining</code> to the bot to log an expense.
               </p>
               <button
-                onClick={unlinkLine}
+                onClick={() => { if (window.confirm("Unlink your LINE account? You'll stop receiving bot replies until you link again.")) unlinkLine(); }}
                 disabled={unlinkLoading}
                 className="w-full py-2.5 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2"
                 style={{ background: "#fef2f2", color: "#ef4444", border: "2px solid #fecaca", opacity: unlinkLoading ? 0.7 : 1 }}

@@ -9,7 +9,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("kanban_projects")
     .select(
-      "id, name, description, color, position, created_at, kanban_tasks(id, project_id, title, description, due_date, priority, status, color, position, created_at)"
+      "id, name, description, color, icon, position, created_at, kanban_tasks(id, project_id, title, description, due_date, priority, status, color, position, created_at)"
     )
     .eq("user_id", user.id)
     .order("position")

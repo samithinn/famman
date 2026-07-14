@@ -12,6 +12,7 @@ const SHOW_DESCRIPTION_ON_CARD = true;
 
 const PALETTE = ["#FFD9E8", "#FFE3C2", "#FFF3B0", "#C8F0DA", "#CBEBFF", "#E3D9FF"];
 const PROJECT_HEADER_COLORS = ["#FFD9E8", "#CBEBFF", "#C8F0DA", "#FFE3C2", "#E3D9FF", "#FFF3B0"];
+const PROJECT_ICONS = ["📁", "🏠", "🚀", "🎯", "⭐", "🎨", "📌", "💡", "🔥", "🌈", "🐱", "🍀"];
 
 const PRIORITY_META: Record<string, { bg: string; fg: string; accent: string }> = {
   High: { bg: "#FFDCD3", fg: "#C0392B", accent: "#E8574C" },
@@ -43,6 +44,7 @@ type KanbanProject = {
   name: string;
   description: string | null;
   color: string | null;
+  icon: string | null;
   position: number;
   created_at: string;
   kanban_tasks: KanbanTask[];
@@ -127,6 +129,7 @@ export default function KanbanView() {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [newProjectColor, setNewProjectColor] = useState(PROJECT_HEADER_COLORS[0]);
+  const [newProjectIcon, setNewProjectIcon] = useState(PROJECT_ICONS[0]);
   const [savingProject, setSavingProject] = useState(false);
 
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([]);
@@ -135,6 +138,7 @@ export default function KanbanView() {
   const [editProjectName, setEditProjectName] = useState("");
   const [editProjectDescription, setEditProjectDescription] = useState("");
   const [editProjectColor, setEditProjectColor] = useState(PROJECT_HEADER_COLORS[0]);
+  const [editProjectIcon, setEditProjectIcon] = useState(PROJECT_ICONS[0]);
   const [savingProjectEdit, setSavingProjectEdit] = useState(false);
 
   useEffect(() => {
@@ -162,7 +166,7 @@ export default function KanbanView() {
     const res = await fetch("/api/kanban/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description: newProjectDescription.trim(), color: newProjectColor }),
+      body: JSON.stringify({ name, description: newProjectDescription.trim(), color: newProjectColor, icon: newProjectIcon }),
     });
     setSavingProject(false);
     if (!res.ok) {
@@ -174,6 +178,7 @@ export default function KanbanView() {
     setNewProjectName("");
     setNewProjectDescription("");
     setNewProjectColor(PROJECT_HEADER_COLORS[0]);
+    setNewProjectIcon(PROJECT_ICONS[0]);
     setAddProjectOpen(false);
   }
 
@@ -190,6 +195,7 @@ export default function KanbanView() {
     setEditProjectName(project.name);
     setEditProjectDescription(project.description ?? "");
     setEditProjectColor(project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)]);
+    setEditProjectIcon(project.icon ?? PROJECT_ICONS[0]);
   }
 
   function cancelEditProject() {
@@ -204,7 +210,7 @@ export default function KanbanView() {
     const res = await fetch("/api/kanban/projects", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: editingProjectId, name, description: editProjectDescription.trim(), color: editProjectColor }),
+      body: JSON.stringify({ id: editingProjectId, name, description: editProjectDescription.trim(), color: editProjectColor, icon: editProjectIcon }),
     });
     setSavingProjectEdit(false);
     if (!res.ok) {
@@ -213,7 +219,7 @@ export default function KanbanView() {
     }
     const { project } = await res.json();
     setProjects(prev =>
-      prev.map(p => (p.id === project.id ? { ...p, name: project.name, description: project.description, color: project.color } : p))
+      prev.map(p => (p.id === project.id ? { ...p, name: project.name, description: project.description, color: project.color, icon: project.icon } : p))
     );
     setEditingProjectId(null);
   }
@@ -256,7 +262,11 @@ export default function KanbanView() {
     });
   }
 
-  async function deleteTask(projectId: string, taskId: string) {
+  async function deleteTask(projectId: string, taskId: string): Promise<boolean> {
+    const project = projects.find(p => p.id === projectId);
+    const task = project?.kanban_tasks.find(t => t.id === taskId);
+    if (!window.confirm(`Delete task "${task?.title ?? "this task"}"? This cannot be undone.`)) return false;
+
     setProjects(prev =>
       prev.map(p => (p.id === projectId ? { ...p, kanban_tasks: p.kanban_tasks.filter(t => t.id !== taskId) } : p))
     );
@@ -265,6 +275,7 @@ export default function KanbanView() {
       setError("Failed to delete task.");
       loadProjects();
     }
+    return true;
   }
 
   function onDeleteCardClick(e: React.MouseEvent<HTMLButtonElement>) {
@@ -350,10 +361,10 @@ export default function KanbanView() {
     setModal({ open: false });
   }
 
-  function deleteTaskFromModal() {
+  async function deleteTaskFromModal() {
     if (!modal.open || !modal.taskId) return;
-    deleteTask(modal.projectId, modal.taskId);
-    setModal({ open: false });
+    const deleted = await deleteTask(modal.projectId, modal.taskId);
+    if (deleted) setModal({ open: false });
   }
 
   function onCardDragStart(e: React.DragEvent<HTMLDivElement>) {
@@ -615,6 +626,17 @@ export default function KanbanView() {
               />
             ))}
           </div>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 220 }}>
+            {PROJECT_ICONS.map(icon => (
+              <button
+                key={icon}
+                onClick={() => setNewProjectIcon(icon)}
+                style={{ width: 26, height: 26, borderRadius: 8, background: icon === newProjectIcon ? "#EDE9F9" : "transparent", border: `1.5px solid ${icon === newProjectIcon ? ACCENT_COLOR : "transparent"}`, cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
           <button
             onClick={createProject}
             disabled={savingProject || !newProjectName.trim()}
@@ -671,7 +693,9 @@ export default function KanbanView() {
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 220 }}>
                       <span style={{ color: "#C7C0DC", fontSize: 15, lineHeight: 1, userSelect: "none" }}>⠿</span>
-                      <div style={{ width: 38, height: 38, borderRadius: 12, background: editingProjectId === project.id ? editProjectColor : headerColor, flexShrink: 0 }} />
+                      <div style={{ width: 38, height: 38, borderRadius: 12, background: editingProjectId === project.id ? editProjectColor : headerColor, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+                        {editingProjectId === project.id ? editProjectIcon : (project.icon ?? PROJECT_ICONS[0])}
+                      </div>
                       {editingProjectId === project.id ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 200 }}>
                           <input
@@ -697,6 +721,20 @@ export default function KanbanView() {
                                 }}
                                 style={{ width: 22, height: 22, borderRadius: "50%", background: hex, cursor: "pointer", border: `2.5px solid ${hex === editProjectColor ? ACCENT_COLOR : "#ffffff"}` }}
                               />
+                            ))}
+                          </div>
+                          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 220 }}>
+                            {PROJECT_ICONS.map(icon => (
+                              <button
+                                key={icon}
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setEditProjectIcon(icon);
+                                }}
+                                style={{ width: 22, height: 22, borderRadius: 7, background: icon === editProjectIcon ? "#EDE9F9" : "transparent", border: `1.5px solid ${icon === editProjectIcon ? ACCENT_COLOR : "transparent"}`, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}
+                              >
+                                {icon}
+                              </button>
                             ))}
                           </div>
                         </div>

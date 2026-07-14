@@ -699,7 +699,7 @@ export default function SettingsView() {
                       <Pencil size={13} />
                     </button>
                     <button
-                      onClick={() => deleteCategory(cat.id)}
+                      onClick={() => { if (window.confirm(`Delete category "${cat.name}"?`)) deleteCategory(cat.id); }}
                       disabled={deletingId === cat.id}
                       className="p-1 rounded-lg"
                       style={{ color: "#ef4444" }}
@@ -1049,7 +1049,7 @@ export default function SettingsView() {
                                         <Pencil size={13} />
                                       </button>
                                       <button
-                                        onClick={() => deleteLineResponse(r.id)}
+                                        onClick={() => { if (window.confirm(`Delete this ${r.type} response?\n\n"${r.response_text}"`)) deleteLineResponse(r.id); }}
                                         disabled={deletingRespId === r.id}
                                         className="p-1 rounded-lg flex-shrink-0"
                                         style={{ color: "#ef4444" }}
@@ -1307,7 +1307,7 @@ export default function SettingsView() {
                   <span className="text-xs font-semibold flex-shrink-0" style={{ color: "#9ca3af" }}>→</span>
                   <span className="flex-1 text-xs font-bold" style={{ color: "#374151" }}>{rule.category}</span>
                   <button
-                    onClick={() => deleteCategoryRule(rule.id)}
+                    onClick={() => { if (window.confirm(`Delete rule "${rule.keyword} → ${rule.category}"?`)) deleteCategoryRule(rule.id); }}
                     disabled={deletingRuleId === rule.id}
                     className="p-1 rounded-lg flex-shrink-0"
                     style={{ color: "#ef4444" }}
@@ -1559,7 +1559,7 @@ export default function SettingsView() {
                           : sub.active ? <Pause size={13} /> : <Play size={13} />}
                       </button>
                       <button
-                        onClick={() => deleteSubscription(sub.id)}
+                        onClick={() => { if (window.confirm(`Delete subscription "${sub.name}"?`)) deleteSubscription(sub.id); }}
                         disabled={deletingSubId === sub.id}
                         className="p-1 rounded-lg flex-shrink-0"
                         style={{ color: "#ef4444" }}

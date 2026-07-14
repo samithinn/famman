@@ -356,12 +356,14 @@ CREATE TABLE IF NOT EXISTS kanban_projects (
   name text NOT NULL,
   description text,
   color text,
+  icon text,
   position double precision NOT NULL DEFAULT 0,
   created_at timestamptz DEFAULT now()
 );
 
 ALTER TABLE kanban_projects ADD COLUMN IF NOT EXISTS position double precision NOT NULL DEFAULT 0;
 ALTER TABLE kanban_projects ADD COLUMN IF NOT EXISTS color text;
+ALTER TABLE kanban_projects ADD COLUMN IF NOT EXISTS icon text;
 
 CREATE INDEX IF NOT EXISTS kanban_projects_user_position_idx
   ON kanban_projects (user_id, position);
