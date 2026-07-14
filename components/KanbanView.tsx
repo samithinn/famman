@@ -85,6 +85,12 @@ function daysLeftLabel(iso: string | null): string {
   return `${diff} days left`;
 }
 
+function colorIndexForId(id: string, mod: number): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return hash % mod;
+}
+
 function isUrgent(iso: string | null): boolean {
   if (!iso) return false;
   const due = new Date(iso + "T00:00:00");
@@ -115,6 +121,11 @@ export default function KanbanView() {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [savingProject, setSavingProject] = useState(false);
+
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editProjectName, setEditProjectName] = useState("");
+  const [editProjectDescription, setEditProjectDescription] = useState("");
+  const [savingProjectEdit, setSavingProjectEdit] = useState(false);
 
   useEffect(() => {
     loadProjects();
@@ -153,6 +164,57 @@ export default function KanbanView() {
     setNewProjectName("");
     setNewProjectDescription("");
     setAddProjectOpen(false);
+  }
+
+  function startEditProject(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    const projectId = e.currentTarget.getAttribute("data-project-id")!;
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+    setEditingProjectId(projectId);
+    setEditProjectName(project.name);
+    setEditProjectDescription(project.description ?? "");
+  }
+
+  function cancelEditProject() {
+    setEditingProjectId(null);
+  }
+
+  async function saveProjectEdit() {
+    if (!editingProjectId) return;
+    const name = editProjectName.trim();
+    if (!name) return;
+    setSavingProjectEdit(true);
+    const res = await fetch("/api/kanban/projects", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editingProjectId, name, description: editProjectDescription.trim() }),
+    });
+    setSavingProjectEdit(false);
+    if (!res.ok) {
+      setError("Failed to update project.");
+      return;
+    }
+    const { project } = await res.json();
+    setProjects(prev =>
+      prev.map(p => (p.id === project.id ? { ...p, name: project.name, description: project.description } : p))
+    );
+    setEditingProjectId(null);
+  }
+
+  async function deleteProject(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    const projectId = e.currentTarget.getAttribute("data-project-id")!;
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+    if (!window.confirm(`Delete project "${project.name}"? This will also delete all its tasks.`)) return;
+
+    setProjects(prev => prev.filter(p => p.id !== projectId));
+    const res = await fetch(`/api/kanban/projects/${projectId}`, { method: "DELETE" });
+    if (!res.ok) {
+      setError("Failed to delete project.");
+      loadProjects();
+    }
   }
 
   function onAddTaskClick(e: React.MouseEvent<HTMLButtonElement>) {
@@ -473,7 +535,7 @@ export default function KanbanView() {
           projects.map((project, pIdx) => {
             const allTasks = project.kanban_tasks;
             const cardBg = pIdx % 2 === 0 ? "#FFFFFF" : "#FBF9FF";
-            const headerColor = PROJECT_HEADER_COLORS[pIdx % PROJECT_HEADER_COLORS.length];
+            const headerColor = PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
 
             const isProjectDragOver = projectDragOverId === project.id && draggedProjectId !== project.id;
 
@@ -489,23 +551,79 @@ export default function KanbanView() {
                 <div style={{ background: cardBg, border: "1px solid #EFEAFA", borderRadius: 20, padding: "22px 22px 24px", boxShadow: "0 1px 3px rgba(45,43,58,0.04)" }}>
                   {/* Project header */}
                   <div
-                    draggable
+                    draggable={editingProjectId !== project.id}
                     data-project-id={project.id}
                     onDragStart={onProjectDragStart}
                     onDragEnd={onProjectDragEnd}
-                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 16, flexWrap: "wrap", cursor: "grab" }}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 16, flexWrap: "wrap", cursor: editingProjectId === project.id ? "default" : "grab" }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 220 }}>
                       <span style={{ color: "#C7C0DC", fontSize: 15, lineHeight: 1, userSelect: "none" }}>⠿</span>
-                      <div style={{ width: 38, height: 38, borderRadius: 12, background: headerColor }} />
-                      <div>
-                        <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 19 }}>{project.name}</div>
-                        <div style={{ fontSize: 13, color: "#9A93AC" }}>{project.description}</div>
-                      </div>
+                      <div style={{ width: 38, height: 38, borderRadius: 12, background: headerColor, flexShrink: 0 }} />
+                      {editingProjectId === project.id ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 200 }}>
+                          <input
+                            value={editProjectName}
+                            onChange={e => setEditProjectName(e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                            style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #EAE5F7", fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 15, outline: "none" }}
+                          />
+                          <input
+                            value={editProjectDescription}
+                            onChange={e => setEditProjectDescription(e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                            placeholder="Description (optional)"
+                            style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 13, outline: "none" }}
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 19 }}>{project.name}</div>
+                          <div style={{ fontSize: 13, color: "#9A93AC" }}>{project.description}</div>
+                        </div>
+                      )}
                     </div>
-                    <span style={{ background: "#EDE9F9", color: "#6C5CE7", fontSize: 12, fontWeight: 800, padding: "4px 12px", borderRadius: 100, whiteSpace: "nowrap" }}>
-                      {allTasks.length} tasks
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ background: "#EDE9F9", color: "#6C5CE7", fontSize: 12, fontWeight: 800, padding: "4px 12px", borderRadius: 100, whiteSpace: "nowrap" }}>
+                        {allTasks.length} tasks
+                      </span>
+                      {editingProjectId === project.id ? (
+                        <>
+                          <button
+                            onClick={saveProjectEdit}
+                            disabled={savingProjectEdit || !editProjectName.trim()}
+                            style={{ background: ACCENT_COLOR, border: "none", borderRadius: 8, padding: "6px 12px", color: "#fff", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12, cursor: "pointer", opacity: savingProjectEdit || !editProjectName.trim() ? 0.6 : 1 }}
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={cancelEditProject}
+                            style={{ background: "#F3F0FC", border: "none", borderRadius: 8, padding: "6px 12px", color: "#6C5CE7", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12, cursor: "pointer" }}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            data-project-id={project.id}
+                            onClick={startEditProject}
+                            title="Edit project"
+                            style={{ width: 26, height: 26, border: "none", background: "rgba(255,255,255,0.6)", borderRadius: "50%", color: "#6C5CE7", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            data-project-id={project.id}
+                            onClick={deleteProject}
+                            title="Delete project"
+                            style={{ width: 26, height: 26, border: "none", background: "rgba(255,255,255,0.6)", borderRadius: "50%", color: "#D64545", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                          >
+                            ✕
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {/* Board */}

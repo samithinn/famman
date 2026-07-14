@@ -53,3 +53,37 @@ export async function PUT(req: NextRequest) {
 
   return NextResponse.json({ ok: true });
 }
+
+export async function PATCH(req: NextRequest) {
+  const supabase = createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  const id = body.id;
+  if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+
+  const update: Record<string, unknown> = {};
+  if (body.name !== undefined) {
+    const name = (body.name ?? "").trim();
+    if (!name) return NextResponse.json({ error: "name cannot be empty" }, { status: 400 });
+    update.name = name;
+  }
+  if (body.description !== undefined) update.description = (body.description ?? "").trim() || null;
+
+  if (Object.keys(update).length === 0)
+    return NextResponse.json({ error: "no fields to update" }, { status: 400 });
+
+  const { data, error } = await supabase
+    .from("kanban_projects")
+    .update(update)
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .select("id, name, description, position, created_at");
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data || data.length === 0)
+    return NextResponse.json({ error: "Project not found or access denied" }, { status: 404 });
+
+  return NextResponse.json({ project: data[0] });
+}
