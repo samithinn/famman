@@ -14,6 +14,10 @@ const PALETTE = ["#FFD9E8", "#FFE3C2", "#FFF3B0", "#C8F0DA", "#CBEBFF", "#E3D9FF
 const PROJECT_HEADER_COLORS = ["#FFD9E8", "#CBEBFF", "#C8F0DA", "#FFE3C2", "#E3D9FF", "#FFF3B0"];
 const PROJECT_ICONS = ["📁", "🏠", "🚀", "🎯", "⭐", "🎨", "📌", "💡", "🔥", "🌈", "🐱", "🍀"];
 
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 const PRIORITY_META: Record<string, { bg: string; fg: string; accent: string }> = {
   High: { bg: "#FFDCD3", fg: "#C0392B", accent: "#E8574C" },
   Medium: { bg: "#FFF0C2", fg: "#A9790A", accent: "#E8A23D" },
@@ -75,6 +79,12 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function formatDayMonth(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d.getTime())) return iso;
+  return `${d.getDate()} ${MONTH_SHORT[d.getMonth()]}`;
+}
+
 function daysLeftLabel(iso: string | null): string {
   if (!iso) return "";
   const due = new Date(iso + "T00:00:00");
@@ -108,6 +118,23 @@ function isUrgent(iso: string | null): boolean {
   return diff <= 1;
 }
 
+function dateKey(y: number, m: number, d: number): string {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function getCalendarDays(year: number, month: number): { key: string; day: number; inMonth: boolean }[] {
+  const startDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const totalCells = Math.ceil((startDay + daysInMonth) / 7) * 7;
+  const cells: { key: string; day: number; inMonth: boolean }[] = [];
+  for (let i = 0; i < totalCells; i++) {
+    const dayOffset = i - startDay + 1;
+    const d = new Date(year, month, dayOffset);
+    cells.push({ key: dateKey(d.getFullYear(), d.getMonth(), d.getDate()), day: d.getDate(), inMonth: d.getMonth() === month });
+  }
+  return cells;
+}
+
 const EMPTY_FORM: ModalForm = { title: "", dueDate: "", description: "", priority: "Medium", color: PALETTE[0] };
 
 export default function KanbanView() {
@@ -117,6 +144,11 @@ export default function KanbanView() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("All");
+  const [kanbanTab, setKanbanTab] = useState<"board" | "calendar">("board");
+  const [calendarCursor, setCalendarCursor] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [taskDragOverId, setTaskDragOverId] = useState<string | null>(null);
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
@@ -246,12 +278,20 @@ export default function KanbanView() {
     setModalForm({ ...EMPTY_FORM, color: PALETTE[0] });
   }
 
-  function onCardClick(e: React.MouseEvent<HTMLDivElement>) {
-    const projectId = e.currentTarget.getAttribute("data-project-id")!;
-    const taskId = e.currentTarget.getAttribute("data-task-id")!;
-    const project = projects.find(p => p.id === projectId);
-    const task = project?.kanban_tasks.find(t => t.id === taskId);
-    if (!task) return;
+  function goToPrevMonth() {
+    setCalendarCursor(prev => (prev.month === 0 ? { year: prev.year - 1, month: 11 } : { year: prev.year, month: prev.month - 1 }));
+  }
+
+  function goToNextMonth() {
+    setCalendarCursor(prev => (prev.month === 11 ? { year: prev.year + 1, month: 0 } : { year: prev.year, month: prev.month + 1 }));
+  }
+
+  function goToToday() {
+    const d = new Date();
+    setCalendarCursor({ year: d.getFullYear(), month: d.getMonth() });
+  }
+
+  function openTaskEditor(projectId: string, task: KanbanTask) {
     setModal({ open: true, mode: "edit", projectId, columnId: task.status, taskId: task.id });
     setModalForm({
       title: task.title,
@@ -260,6 +300,15 @@ export default function KanbanView() {
       priority: task.priority,
       color: task.color ?? PALETTE[0],
     });
+  }
+
+  function onCardClick(e: React.MouseEvent<HTMLDivElement>) {
+    const projectId = e.currentTarget.getAttribute("data-project-id")!;
+    const taskId = e.currentTarget.getAttribute("data-task-id")!;
+    const project = projects.find(p => p.id === projectId);
+    const task = project?.kanban_tasks.find(t => t.id === taskId);
+    if (!task) return;
+    openTaskEditor(projectId, task);
   }
 
   async function deleteTask(projectId: string, taskId: string): Promise<boolean> {
@@ -555,6 +604,27 @@ export default function KanbanView() {
   const query = searchQuery.trim().toLowerCase();
   const modalMeta = PRIORITY_META[modalForm.priority] ?? PRIORITY_META.Medium;
 
+  const filteredTaskEntries = projects
+    .flatMap(p => p.kanban_tasks.map(task => ({ project: p, task })))
+    .filter(({ task }) => !query || task.title.toLowerCase().includes(query))
+    .filter(({ task }) => priorityFilter === "All" || task.priority === priorityFilter);
+
+  const tasksByDate: Record<string, { project: KanbanProject; task: KanbanTask }[]> = {};
+  for (const entry of filteredTaskEntries) {
+    if (!entry.task.due_date) continue;
+    if (!tasksByDate[entry.task.due_date]) tasksByDate[entry.task.due_date] = [];
+    tasksByDate[entry.task.due_date].push(entry);
+  }
+
+  const now = new Date();
+  const todayStr = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+  const upcomingTasks = filteredTaskEntries
+    .filter(({ task }) => task.due_date && task.due_date >= todayStr)
+    .sort((a, b) => (a.task.due_date! < b.task.due_date! ? -1 : a.task.due_date! > b.task.due_date! ? 1 : 0))
+    .slice(0, 8);
+
+  const calendarDays = getCalendarDays(calendarCursor.year, calendarCursor.month);
+
   return (
     <div style={{ minHeight: "100%", width: "100%", background: "#FAF8FF", fontFamily: "'Nunito',sans-serif", color: "#2D2B3A", display: "flex", flexDirection: "column" }}>
       {/* Header */}
@@ -573,8 +643,39 @@ export default function KanbanView() {
         </span>
       </div>
 
+      {upcomingTasks.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 32px", background: "#FFF0EE", borderBottom: "1px solid #FFD9D2", overflowX: "auto" }}>
+          <span style={{ color: "#C0392B", fontWeight: 800, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            🔔 Upcoming Deadlines:
+          </span>
+          {upcomingTasks.map(({ project, task }) => (
+            <button
+              key={task.id}
+              onClick={() => openTaskEditor(project.id, task)}
+              style={{ background: "#fff", border: "1px solid #FFC9C0", borderRadius: 100, padding: "5px 12px", color: "#C0392B", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", cursor: "pointer", flexShrink: 0 }}
+            >
+              {formatDayMonth(task.due_date!)}: {task.title}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Filters toolbar */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 32px", borderBottom: "1px solid #F1EDFA", background: "#FEFDFF", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 4, background: "#F7F5FC", borderRadius: 10, padding: 4, flexShrink: 0 }}>
+          <button
+            onClick={() => setKanbanTab("board")}
+            style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: kanbanTab === "board" ? "#fff" : "transparent", color: kanbanTab === "board" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: kanbanTab === "board" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+          >
+            Board
+          </button>
+          <button
+            onClick={() => setKanbanTab("calendar")}
+            style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: kanbanTab === "calendar" ? "#fff" : "transparent", color: kanbanTab === "calendar" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: kanbanTab === "calendar" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+          >
+            Calendar
+          </button>
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#F7F5FC", borderRadius: 10, padding: "8px 12px", flex: "0 0 auto", width: 260 }}>
           <span style={{ color: "#B0A9C4", fontSize: 13 }}>⌕</span>
           <input
@@ -658,6 +759,7 @@ export default function KanbanView() {
       )}
 
       {/* Swimlanes */}
+      {kanbanTab === "board" && (
       <div style={{ flex: 1, padding: 32, overflow: "auto", display: "flex", flexDirection: "column", gap: 44 }}>
         {loading ? (
           <div style={{ color: "#9A93AC", fontSize: 14 }}>Loading...</div>
@@ -892,6 +994,97 @@ export default function KanbanView() {
           })
         )}
       </div>
+      )}
+
+      {/* Calendar */}
+      {kanbanTab === "calendar" && (
+        <div style={{ flex: 1, padding: 32, overflow: "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
+            <button
+              onClick={goToPrevMonth}
+              style={{ width: 32, height: 32, borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
+            >
+              ‹
+            </button>
+            <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 18, minWidth: 170, textAlign: "center" }}>
+              {MONTH_NAMES[calendarCursor.month]} {calendarCursor.year}
+            </span>
+            <button
+              onClick={goToNextMonth}
+              style={{ width: 32, height: 32, borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
+            >
+              ›
+            </button>
+            <button
+              onClick={goToToday}
+              style={{ padding: "7px 14px", borderRadius: 10, border: "none", background: "#F3F0FC", color: ACCENT_COLOR, fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+            >
+              Today
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
+            {WEEKDAY_SHORT.map(d => (
+              <div key={d} style={{ textAlign: "center", fontSize: 12, fontWeight: 800, color: "#9A93AC", padding: "4px 0" }}>
+                {d}
+              </div>
+            ))}
+            {calendarDays.map(cell => {
+              const dayTasks = tasksByDate[cell.key] ?? [];
+              const isToday = cell.key === todayStr;
+              return (
+                <div
+                  key={cell.key}
+                  style={{
+                    minHeight: 96,
+                    borderRadius: 12,
+                    padding: 8,
+                    background: cell.inMonth ? "#FFFFFF" : "#FAF8FF",
+                    border: isToday ? `2px solid ${ACCENT_COLOR}` : "1px solid #EFEAFA",
+                    opacity: cell.inMonth ? 1 : 0.55,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 700, color: isToday ? ACCENT_COLOR : "#5C5570" }}>
+                    {cell.day}
+                  </span>
+                  {dayTasks.slice(0, 3).map(({ project, task }) => {
+                    const chipColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
+                    return (
+                      <button
+                        key={task.id}
+                        onClick={() => openTaskEditor(project.id, task)}
+                        title={`${project.name}: ${task.title}`}
+                        style={{
+                          textAlign: "left",
+                          background: chipColor,
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "3px 6px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#332F45",
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {task.title}
+                      </button>
+                    );
+                  })}
+                  {dayTasks.length > 3 && (
+                    <span style={{ fontSize: 10.5, color: "#9A93AC", fontWeight: 700 }}>+{dayTasks.length - 3} more</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Modal / slide-over */}
       {modal.open && (
