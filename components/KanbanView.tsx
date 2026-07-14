@@ -129,6 +129,8 @@ export default function KanbanView() {
   const [newProjectColor, setNewProjectColor] = useState(PROJECT_HEADER_COLORS[0]);
   const [savingProject, setSavingProject] = useState(false);
 
+  const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([]);
+
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editProjectName, setEditProjectName] = useState("");
   const [editProjectDescription, setEditProjectDescription] = useState("");
@@ -173,6 +175,10 @@ export default function KanbanView() {
     setNewProjectDescription("");
     setNewProjectColor(PROJECT_HEADER_COLORS[0]);
     setAddProjectOpen(false);
+  }
+
+  function toggleProjectExpanded(projectId: string) {
+    setExpandedProjectIds(prev => (prev.includes(projectId) ? prev.filter(id => id !== projectId) : [...prev, projectId]));
   }
 
   function startEditProject(e: React.MouseEvent<HTMLButtonElement>) {
@@ -634,6 +640,7 @@ export default function KanbanView() {
             const headerColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
 
             const isProjectDragOver = projectDragOverId === project.id && draggedProjectId !== project.id;
+            const isExpanded = expandedProjectIds.includes(project.id);
 
             return (
               <div
@@ -651,7 +658,8 @@ export default function KanbanView() {
                     data-project-id={project.id}
                     onDragStart={onProjectDragStart}
                     onDragEnd={onProjectDragEnd}
-                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 16, flexWrap: "wrap", cursor: editingProjectId === project.id ? "default" : "grab" }}
+                    onClick={editingProjectId === project.id ? undefined : () => toggleProjectExpanded(project.id)}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isExpanded ? 18 : 0, gap: 16, flexWrap: "wrap", cursor: editingProjectId === project.id ? "default" : "pointer" }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 220 }}>
                       <span style={{ color: "#C7C0DC", fontSize: 15, lineHeight: 1, userSelect: "none" }}>⠿</span>
@@ -687,13 +695,18 @@ export default function KanbanView() {
                       ) : (
                         <div>
                           <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 19 }}>{project.name}</div>
-                          <div style={{ fontSize: 13, color: "#9A93AC" }}>{project.description}</div>
+                          {isExpanded && project.description && (
+                            <div style={{ fontSize: 13, color: "#9A93AC" }}>{project.description}</div>
+                          )}
                         </div>
                       )}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ background: "#EDE9F9", color: "#6C5CE7", fontSize: 12, fontWeight: 800, padding: "4px 12px", borderRadius: 100, whiteSpace: "nowrap" }}>
                         {allTasks.length} tasks
+                      </span>
+                      <span style={{ color: "#B0A9C4", fontSize: 12, lineHeight: 1, userSelect: "none", transition: "transform 0.15s", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }}>
+                        ▸
                       </span>
                       {editingProjectId === project.id ? (
                         <>
@@ -735,6 +748,7 @@ export default function KanbanView() {
                   </div>
 
                   {/* Board */}
+                  {isExpanded && (
                   <div style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 6 }}>
                     {COLUMNS.map(col => {
                       const tasks = allTasks
@@ -823,6 +837,7 @@ export default function KanbanView() {
                       );
                     })}
                   </div>
+                  )}
                 </div>
                 <hr style={{ border: "none", borderTop: "1px solid #ECE6FA", margin: "36px 12px 0" }} />
               </div>
