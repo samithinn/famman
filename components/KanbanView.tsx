@@ -176,6 +176,8 @@ export default function KanbanView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [kanbanTab, setKanbanTab] = useState<"board" | "calendar" | "completed">("board");
+  const [projectDensity, setProjectDensity] = useState<"cozy" | "compact">("compact");
+  const [projectViewMode, setProjectViewMode] = useState<"list" | "grid">("list");
   const [completingProjectId, setCompletingProjectId] = useState<string | null>(null);
   const [calendarCursor, setCalendarCursor] = useState(() => {
     const d = new Date();
@@ -814,6 +816,38 @@ export default function KanbanView() {
           <option value="Medium">Medium</option>
           <option value="Low">Low</option>
         </select>
+        <div style={{ display: "flex", gap: 2, background: "#F7F5FC", borderRadius: 10, padding: 4, flexShrink: 0 }}>
+          <button
+            onClick={() => setProjectDensity("cozy")}
+            title="More space between projects"
+            style={{ padding: "7px 12px", borderRadius: 7, border: "none", background: projectDensity === "cozy" ? "#fff" : "transparent", color: projectDensity === "cozy" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: projectDensity === "cozy" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+          >
+            Cozy
+          </button>
+          <button
+            onClick={() => setProjectDensity("compact")}
+            title="Less space between projects"
+            style={{ padding: "7px 12px", borderRadius: 7, border: "none", background: projectDensity === "compact" ? "#fff" : "transparent", color: projectDensity === "compact" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: projectDensity === "compact" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+          >
+            Compact
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 2, background: "#F7F5FC", borderRadius: 10, padding: 4, flexShrink: 0 }}>
+          <button
+            onClick={() => setProjectViewMode("list")}
+            title="One project per row"
+            style={{ padding: "7px 12px", borderRadius: 7, border: "none", background: projectViewMode === "list" ? "#fff" : "transparent", color: projectViewMode === "list" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: projectViewMode === "list" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+          >
+            ☰ List
+          </button>
+          <button
+            onClick={() => setProjectViewMode("grid")}
+            title="Projects arranged in a responsive grid"
+            style={{ padding: "7px 12px", borderRadius: 7, border: "none", background: projectViewMode === "grid" ? "#fff" : "transparent", color: projectViewMode === "grid" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: projectViewMode === "grid" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+          >
+            ▦ Grid
+          </button>
+        </div>
         <div style={{ flex: 1 }} />
         <button
           onClick={() => setAddProjectOpen(v => !v)}
@@ -879,7 +913,13 @@ export default function KanbanView() {
 
       {/* Swimlanes */}
       {kanbanTab === "board" && (
-      <div style={{ flex: 1, padding: 32, overflow: "auto", display: "flex", flexDirection: "column", gap: 44 }}>
+      <div
+        style={
+          projectViewMode === "grid"
+            ? { flex: 1, padding: 32, overflow: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: projectDensity === "compact" ? 12 : 24, alignItems: "start" }
+            : { flex: 1, padding: 32, overflow: "auto", display: "flex", flexDirection: "column", gap: projectDensity === "compact" ? 10 : 44 }
+        }
+      >
         {loading ? (
           <div style={{ color: "#9A93AC", fontSize: 14 }}>Loading...</div>
         ) : activeProjects.length === 0 ? (
@@ -901,9 +941,9 @@ export default function KanbanView() {
                 onDragOver={onProjectDragOver}
                 onDragLeave={onProjectDragLeave}
                 onDrop={onProjectDrop}
-                style={{ borderRadius: 20, outline: isProjectDragOver ? `2px dashed ${ACCENT_COLOR}` : "2px dashed transparent", outlineOffset: 4, opacity: draggedProjectId === project.id ? 0.5 : 1, transition: "opacity 0.15s" }}
+                style={{ borderRadius: 20, outline: isProjectDragOver ? `2px dashed ${ACCENT_COLOR}` : "2px dashed transparent", outlineOffset: 4, opacity: draggedProjectId === project.id ? 0.5 : 1, transition: "opacity 0.15s", gridColumn: projectViewMode === "grid" && isExpanded ? "1 / -1" : undefined }}
               >
-                <div style={{ background: cardBg, border: "1px solid #EFEAFA", borderRadius: 20, padding: "22px 22px 24px", boxShadow: "0 1px 3px rgba(45,43,58,0.04)" }}>
+                <div style={{ background: cardBg, border: "1px solid #EFEAFA", borderRadius: 20, padding: projectDensity === "compact" && !isExpanded ? "12px 18px" : "22px 22px 24px", boxShadow: "0 1px 3px rgba(45,43,58,0.04)" }}>
                   {/* Project header */}
                   <div
                     draggable={editingProjectId !== project.id}
@@ -1123,7 +1163,9 @@ export default function KanbanView() {
                   </div>
                   )}
                 </div>
-                <hr style={{ border: "none", borderTop: "1px solid #ECE6FA", margin: "36px 12px 0" }} />
+                {projectViewMode === "list" && (
+                  <hr style={{ border: "none", borderTop: "1px solid #ECE6FA", margin: projectDensity === "compact" && !isExpanded ? "8px 12px 0" : "36px 12px 0" }} />
+                )}
               </div>
             );
           })
