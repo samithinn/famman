@@ -466,8 +466,7 @@ export default function KanbanView() {
     <div style={{ minHeight: "100%", width: "100%", background: "#FAF8FF", fontFamily: "'Nunito',sans-serif", color: "#2D2B3A", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "20px 32px", borderBottom: "1px solid #ECE7FA", background: "#FFFFFF" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/kanban-header.png" alt="FamMan x KANBAN" style={{ height: 44, width: "auto" }} />
+        <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 20 }}>FamMan x KANBAN</span>
       </div>
 
       {/* Filters toolbar */}
