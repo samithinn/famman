@@ -5,7 +5,7 @@ const PRIORITIES = ["High", "Medium", "Low"];
 const STATUSES = ["To do", "In Progress", "Done"];
 
 const TASK_COLUMNS =
-  "id, project_id, title, description, due_date, priority, status, color, position, created_at";
+  "id, project_id, title, description, due_date, priority, status, color, position, created_at, source";
 
 export async function POST(req: NextRequest) {
   const supabase = createSupabaseServer();
@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
   const projectId = body.project_id;
   const title = (body.title ?? "").trim();
   const description = (body.description ?? "").trim();
+  const source = (body.source ?? "").trim();
   const dueDate = body.due_date || null;
   const priority = PRIORITIES.includes(body.priority) ? body.priority : "Medium";
   const status = STATUSES.includes(body.status) ? body.status : "To do";
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
       user_id: user.id,
       title,
       description: description || null,
+      source: source || null,
       due_date: dueDate,
       priority,
       status,
@@ -74,6 +76,7 @@ export async function PUT(req: NextRequest) {
     update.title = title;
   }
   if (body.description !== undefined) update.description = (body.description ?? "").trim() || null;
+  if (body.source !== undefined) update.source = (body.source ?? "").trim() || null;
   if (body.due_date !== undefined) update.due_date = body.due_date || null;
   if (body.color !== undefined) update.color = (body.color ?? "").trim() || null;
   if (body.priority !== undefined) {

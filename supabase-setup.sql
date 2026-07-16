@@ -390,6 +390,8 @@ CREATE TABLE IF NOT EXISTS kanban_tasks (
   created_at timestamptz DEFAULT now()
 );
 
+ALTER TABLE kanban_tasks ADD COLUMN IF NOT EXISTS source text;
+
 CREATE INDEX IF NOT EXISTS kanban_tasks_project_status_position_idx
   ON kanban_tasks (project_id, status, position);
 

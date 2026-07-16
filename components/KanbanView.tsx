@@ -50,6 +50,7 @@ type KanbanTask = {
   project_id: string;
   title: string;
   description: string | null;
+  source: string | null;
   due_date: string | null;
   priority: "High" | "Medium" | "Low";
   status: string;
@@ -84,6 +85,7 @@ type ModalForm = {
   title: string;
   dueDate: string;
   description: string;
+  source: string;
   priority: "High" | "Medium" | "Low";
   color: string;
 };
@@ -175,7 +177,7 @@ function getCalendarDays(year: number, month: number): { key: string; day: numbe
   return cells;
 }
 
-const EMPTY_FORM: ModalForm = { title: "", dueDate: "", description: "", priority: "Medium", color: PALETTE[0] };
+const EMPTY_FORM: ModalForm = { title: "", dueDate: "", description: "", source: "", priority: "Medium", color: PALETTE[0] };
 
 export default function KanbanView() {
   const [projects, setProjects] = useState<KanbanProject[]>([]);
@@ -396,6 +398,7 @@ export default function KanbanView() {
       title: task.title,
       dueDate: task.due_date ?? "",
       description: task.description ?? "",
+      source: task.source ?? "",
       priority: task.priority,
       color: task.color ?? PALETTE[0],
     });
@@ -469,6 +472,7 @@ export default function KanbanView() {
           id: modal.taskId,
           title,
           description: form.description,
+          source: form.source,
           due_date: form.dueDate || null,
           priority: form.priority,
           color: form.color,
@@ -498,6 +502,7 @@ export default function KanbanView() {
           project_id: modal.projectId,
           title,
           description: form.description,
+          source: form.source,
           due_date: form.dueDate || null,
           priority: form.priority,
           status: modal.columnId,
@@ -1138,10 +1143,34 @@ export default function KanbanView() {
                                   >
                                     ✕
                                   </button>
-                                  <div style={{ fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 14.5, margin: "0 22px 6px 0", color: "#332F45" }}>{task.title}</div>
+                                  <div style={{ fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 14.5, margin: "0 22px 6px 0", color: "#332F45", overflowWrap: "anywhere" }}>{task.title}</div>
                                   {SHOW_DESCRIPTION_ON_CARD && task.description && (
-                                    <div style={{ fontSize: 12.5, color: "#5C5570", marginBottom: 10, lineHeight: 1.4 }}>{task.description}</div>
+                                    <div style={{ fontSize: 12.5, color: "#5C5570", marginBottom: 10, lineHeight: 1.4, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{task.description}</div>
                                   )}
+                                  {task.source && (() => {
+                                    const isLink = /^https?:\/\//i.test(task.source);
+                                    return (
+                                      <a
+                                        href={isLink ? task.source : undefined}
+                                        target={isLink ? "_blank" : undefined}
+                                        rel={isLink ? "noopener noreferrer" : undefined}
+                                        onClick={isLink ? e => e.stopPropagation() : undefined}
+                                        style={{
+                                          display: "block",
+                                          fontSize: 11.5,
+                                          color: "#6C5CE7",
+                                          marginBottom: 10,
+                                          lineHeight: 1.4,
+                                          whiteSpace: "pre-wrap",
+                                          overflowWrap: "anywhere",
+                                          textDecoration: isLink ? "underline" : "none",
+                                          cursor: isLink ? "pointer" : "inherit",
+                                        }}
+                                      >
+                                        🔗 {task.source}
+                                      </a>
+                                    );
+                                  })()}
                                   <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
                                     <span style={{ fontSize: 11.5, fontWeight: 700, color: urgent ? "#C0392B" : "#5C5570", background: "rgba(255,255,255,0.55)", padding: "3px 9px", borderRadius: 100, whiteSpace: "nowrap" }}>
                                       {formatDate(task.due_date)}
@@ -1436,6 +1465,17 @@ export default function KanbanView() {
                   placeholder="Add more detail..."
                   rows={4}
                   style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 14.5, outline: "none", resize: "vertical" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12.5, fontWeight: 800, color: "#6C5CE7", marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.03em" }}>Source</label>
+                <input
+                  name="source"
+                  value={modalForm.source}
+                  onChange={onFormChange}
+                  placeholder="Website URL or file path"
+                  style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 14.5, outline: "none" }}
                 />
               </div>
 
