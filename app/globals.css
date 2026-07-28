@@ -4,8 +4,12 @@
 
 body {
   background-color: #fdf2f8;
-  font-family: 'Nunito', sans-serif;
+  font-family: var(--font-app), 'Noto Sans Thai', sans-serif;
   transition: background-color 0.3s, color 0.3s;
+}
+
+input, select, textarea, button {
+  font-family: inherit;
 }
 
 /* Dark mode - Soft pastel palette */

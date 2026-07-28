@@ -187,7 +187,7 @@ export default function EditTransactionModal({ transaction, onClose, onSuccess }
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
               className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none cursor-pointer"
-              style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+              style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "var(--font-app), sans-serif" }}
               disabled={catLoading}
             >
               {catLoading

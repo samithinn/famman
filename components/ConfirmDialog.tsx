@@ -47,7 +47,7 @@ export default function ConfirmDialog({
           boxShadow: "0 24px 60px rgba(108,92,231,0.28)",
           border: "1px solid #F1EDFA",
           textAlign: "center",
-          fontFamily: "'Nunito', sans-serif",
+          fontFamily: "var(--font-app), sans-serif",
         }}
       >
         <div style={{ fontSize: 40, lineHeight: 1, marginBottom: 12 }}>🗑️</div>
@@ -63,7 +63,7 @@ export default function ConfirmDialog({
               border: "1.5px solid #EAE5F7",
               background: "#fff",
               color: "#8B84A0",
-              fontFamily: "'Nunito', sans-serif",
+              fontFamily: "var(--font-app), sans-serif",
               fontWeight: 800,
               fontSize: 13.5,
               cursor: "pointer",
@@ -80,7 +80,7 @@ export default function ConfirmDialog({
               border: "none",
               background: "linear-gradient(135deg, #FFA6C9, #FF7FA6)",
               color: "#fff",
-              fontFamily: "'Nunito', sans-serif",
+              fontFamily: "var(--font-app), sans-serif",
               fontWeight: 800,
               fontSize: 13.5,
               cursor: "pointer",

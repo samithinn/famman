@@ -1,8 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Nunito } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const nunito = Nunito({ subsets: ["latin"], weight: ["400", "600", "700", "800", "900"] });
+const notoSansThai = localFont({
+  src: "./fonts/NotoSansThai-Variable.ttf",
+  variable: "--font-app",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "FamMan",
@@ -27,8 +31,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" data-theme="cupcake">
-      <body className={nunito.className}>{children}</body>
+    <html lang="en" data-theme="cupcake" className={notoSansThai.variable}>
+      <body>{children}</body>
     </html>
   );
 }

@@ -811,7 +811,7 @@ export default function SettingsView() {
                             style={{
                               border: "2px solid #f3e8ff",
                               color: u.role === "admin" ? "#7c3aed" : "#6b7280",
-                              fontFamily: "Nunito",
+                              fontFamily: "var(--font-app), sans-serif",
                               background: u.role === "admin" ? "#faf5ff" : "#f9fafb",
                             }}
                           >
@@ -905,7 +905,7 @@ export default function SettingsView() {
                   value={respCategoryFilter}
                   onChange={e => setRespCategoryFilter(e.target.value)}
                   className="w-full rounded-xl px-3 py-2 text-xs font-semibold outline-none cursor-pointer"
-                  style={{ border: "2px solid #f3e8ff", color: respCategoryFilter ? "#374151" : "#9ca3af", fontFamily: "Nunito" }}
+                  style={{ border: "2px solid #f3e8ff", color: respCategoryFilter ? "#374151" : "#9ca3af", fontFamily: "var(--font-app), sans-serif" }}
                 >
                   <option value="">Filter by category… (all)</option>
                   {Array.from(new Set(lineResponses.map(r => r.category))).sort().map(cat => (
@@ -1125,7 +1125,7 @@ export default function SettingsView() {
                     onChange={e => setHelpMessage(e.target.value)}
                     rows={10}
                     className="w-full rounded-xl px-3 py-2.5 text-xs font-semibold outline-none resize-y"
-                    style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+                    style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "var(--font-app), sans-serif" }}
                   />
                   <button
                     onClick={saveHelpMessage}
@@ -1260,7 +1260,7 @@ export default function SettingsView() {
               value={newRuleCategory}
               onChange={e => setNewRuleCategory(e.target.value)}
               className="w-36 rounded-xl px-2 py-2 text-xs font-semibold outline-none cursor-pointer"
-              style={{ border: "2px solid #f3e8ff", color: newRuleCategory ? "#374151" : "#9ca3af", fontFamily: "Nunito" }}
+              style={{ border: "2px solid #f3e8ff", color: newRuleCategory ? "#374151" : "#9ca3af", fontFamily: "var(--font-app), sans-serif" }}
             >
               <option value="">Category…</option>
               {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
@@ -1374,7 +1374,7 @@ export default function SettingsView() {
                 value={newSubDay}
                 onChange={e => setNewSubDay(e.target.value)}
                 className="w-24 rounded-xl px-2 py-2.5 text-sm font-semibold outline-none cursor-pointer"
-                style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+                style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "var(--font-app), sans-serif" }}
               >
                 {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
                   <option key={d} value={d}>Day {d}</option>
@@ -1385,7 +1385,7 @@ export default function SettingsView() {
               value={newSubCategory}
               onChange={e => setNewSubCategory(e.target.value)}
               className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none cursor-pointer"
-              style={{ border: "2px solid #f3e8ff", color: newSubCategory ? "#374151" : "#9ca3af", fontFamily: "Nunito" }}
+              style={{ border: "2px solid #f3e8ff", color: newSubCategory ? "#374151" : "#9ca3af", fontFamily: "var(--font-app), sans-serif" }}
             >
               <option value="">Category…</option>
               {categories.filter(c => c.type === "expense").map(c => (
@@ -1468,7 +1468,7 @@ export default function SettingsView() {
                           value={editSubDay}
                           onChange={e => setEditSubDay(e.target.value)}
                           className="w-20 rounded-lg px-1 py-1.5 text-xs font-semibold outline-none cursor-pointer"
-                          style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+                          style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "var(--font-app), sans-serif" }}
                         >
                           {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
                             <option key={d} value={d}>Day {d}</option>
@@ -1479,7 +1479,7 @@ export default function SettingsView() {
                         value={editSubCategory}
                         onChange={e => setEditSubCategory(e.target.value)}
                         className="w-full rounded-lg px-2 py-1.5 text-xs font-semibold outline-none cursor-pointer"
-                        style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+                        style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "var(--font-app), sans-serif" }}
                       >
                         {categories.filter(c => c.type === "expense").map(c => (
                           <option key={c.id} value={c.name}>{c.name}</option>

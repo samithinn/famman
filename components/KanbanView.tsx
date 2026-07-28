@@ -767,7 +767,7 @@ export default function KanbanView() {
   };
 
   return (
-    <div style={{ minHeight: "100%", width: "100%", background: "#FAF8FF", fontFamily: "'Nunito',sans-serif", color: "#2D2B3A", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100%", width: "100%", background: "#FAF8FF", fontFamily: "var(--font-app), sans-serif", color: "#2D2B3A", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "20px 32px", borderBottom: "1px solid #ECE7FA", background: "#FFFFFF" }}>
         <div style={{ width: 36, height: 36, borderRadius: 11, background: ACCENT_COLOR, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 3px 8px rgba(108,92,231,0.35)" }}>
@@ -806,19 +806,19 @@ export default function KanbanView() {
         <div style={{ display: "flex", gap: 4, background: "#F7F5FC", borderRadius: 10, padding: 4, flexShrink: 0 }}>
           <button
             onClick={() => setKanbanTab("board")}
-            style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: kanbanTab === "board" ? "#fff" : "transparent", color: kanbanTab === "board" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: kanbanTab === "board" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+            style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: kanbanTab === "board" ? "#fff" : "transparent", color: kanbanTab === "board" ? ACCENT_COLOR : "#8B84A0", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: kanbanTab === "board" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
           >
             Board
           </button>
           <button
             onClick={() => setKanbanTab("calendar")}
-            style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: kanbanTab === "calendar" ? "#fff" : "transparent", color: kanbanTab === "calendar" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: kanbanTab === "calendar" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+            style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: kanbanTab === "calendar" ? "#fff" : "transparent", color: kanbanTab === "calendar" ? ACCENT_COLOR : "#8B84A0", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: kanbanTab === "calendar" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
           >
             Calendar
           </button>
           <button
             onClick={() => setKanbanTab("completed")}
-            style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: kanbanTab === "completed" ? "#fff" : "transparent", color: kanbanTab === "completed" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: kanbanTab === "completed" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+            style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: kanbanTab === "completed" ? "#fff" : "transparent", color: kanbanTab === "completed" ? ACCENT_COLOR : "#8B84A0", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: kanbanTab === "completed" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
           >
             Completed{completedProjects.length > 0 ? ` (${completedProjects.length})` : ""}
           </button>
@@ -829,13 +829,13 @@ export default function KanbanView() {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search tasks..."
-            style={{ border: "none", background: "transparent", outline: "none", fontFamily: "'Nunito',sans-serif", fontSize: 13.5, color: "#332F45", width: "100%" }}
+            style={{ border: "none", background: "transparent", outline: "none", fontFamily: "var(--font-app), sans-serif", fontSize: 13.5, color: "#332F45", width: "100%" }}
           />
         </div>
         <select
           value={priorityFilter}
           onChange={e => setPriorityFilter(e.target.value)}
-          style={{ background: "#F7F5FC", border: "none", borderRadius: 10, padding: "8px 12px", fontFamily: "'Nunito',sans-serif", fontSize: 13, fontWeight: 700, color: "#5C5570", outline: "none", cursor: "pointer" }}
+          style={{ background: "#F7F5FC", border: "none", borderRadius: 10, padding: "8px 12px", fontFamily: "var(--font-app), sans-serif", fontSize: 13, fontWeight: 700, color: "#5C5570", outline: "none", cursor: "pointer" }}
         >
           <option value="All">All priorities</option>
           <option value="High">High 🔥</option>
@@ -846,14 +846,14 @@ export default function KanbanView() {
           <button
             onClick={() => setProjectViewMode("list")}
             title="One project per row"
-            style={{ padding: "7px 12px", borderRadius: 7, border: "none", background: projectViewMode === "list" ? "#fff" : "transparent", color: projectViewMode === "list" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: projectViewMode === "list" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+            style={{ padding: "7px 12px", borderRadius: 7, border: "none", background: projectViewMode === "list" ? "#fff" : "transparent", color: projectViewMode === "list" ? ACCENT_COLOR : "#8B84A0", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: projectViewMode === "list" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
           >
             ☰ List
           </button>
           <button
             onClick={() => setProjectViewMode("grid")}
             title="Projects arranged in a 4-column grid"
-            style={{ padding: "7px 12px", borderRadius: 7, border: "none", background: projectViewMode === "grid" ? "#fff" : "transparent", color: projectViewMode === "grid" ? ACCENT_COLOR : "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: projectViewMode === "grid" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
+            style={{ padding: "7px 12px", borderRadius: 7, border: "none", background: projectViewMode === "grid" ? "#fff" : "transparent", color: projectViewMode === "grid" ? ACCENT_COLOR : "#8B84A0", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: projectViewMode === "grid" ? "0 1px 3px rgba(45,43,58,0.08)" : "none" }}
           >
             ▦ Grid
           </button>
@@ -861,7 +861,7 @@ export default function KanbanView() {
         <div style={{ flex: 1 }} />
         <button
           onClick={() => setAddProjectOpen(v => !v)}
-          style={{ background: ACCENT_COLOR, border: "none", borderRadius: 10, padding: "9px 16px", color: "#fff", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+          style={{ background: ACCENT_COLOR, border: "none", borderRadius: 10, padding: "9px 16px", color: "#fff", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
         >
           + New Project
         </button>
@@ -873,13 +873,13 @@ export default function KanbanView() {
             value={newProjectName}
             onChange={e => setNewProjectName(e.target.value)}
             placeholder="Project name"
-            style={{ padding: "9px 12px", borderRadius: 10, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 13.5, outline: "none", width: 220 }}
+            style={{ padding: "9px 12px", borderRadius: 10, border: "1.5px solid #EAE5F7", fontFamily: "var(--font-app), sans-serif", fontSize: 13.5, outline: "none", width: 220 }}
           />
           <input
             value={newProjectDescription}
             onChange={e => setNewProjectDescription(e.target.value)}
             placeholder="Description (optional)"
-            style={{ padding: "9px 12px", borderRadius: 10, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 13.5, outline: "none", flex: 1, minWidth: 200 }}
+            style={{ padding: "9px 12px", borderRadius: 10, border: "1.5px solid #EAE5F7", fontFamily: "var(--font-app), sans-serif", fontSize: 13.5, outline: "none", flex: 1, minWidth: 200 }}
           />
           <div style={{ display: "flex", gap: 8 }}>
             {PROJECT_HEADER_COLORS.map(hex => (
@@ -904,13 +904,13 @@ export default function KanbanView() {
           <button
             onClick={createProject}
             disabled={savingProject || !newProjectName.trim()}
-            style={{ background: ACCENT_COLOR, border: "none", borderRadius: 10, padding: "9px 16px", color: "#fff", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", opacity: savingProject || !newProjectName.trim() ? 0.6 : 1 }}
+            style={{ background: ACCENT_COLOR, border: "none", borderRadius: 10, padding: "9px 16px", color: "#fff", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer", opacity: savingProject || !newProjectName.trim() ? 0.6 : 1 }}
           >
             Create
           </button>
           <button
             onClick={() => setAddProjectOpen(false)}
-            style={{ background: "#F3F0FC", border: "none", borderRadius: 10, padding: "9px 16px", color: "#6C5CE7", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+            style={{ background: "#F3F0FC", border: "none", borderRadius: 10, padding: "9px 16px", color: "#6C5CE7", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
           >
             Cancel
           </button>
@@ -981,7 +981,7 @@ export default function KanbanView() {
                             onChange={e => setEditProjectDescription(e.target.value)}
                             onClick={e => e.stopPropagation()}
                             placeholder="Description (optional)"
-                            style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 13, outline: "none" }}
+                            style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #EAE5F7", fontFamily: "var(--font-app), sans-serif", fontSize: 13, outline: "none" }}
                           />
                           <div style={{ display: "flex", gap: 6 }}>
                             {PROJECT_HEADER_COLORS.map(hex => (
@@ -1031,13 +1031,13 @@ export default function KanbanView() {
                           <button
                             onClick={saveProjectEdit}
                             disabled={savingProjectEdit || !editProjectName.trim()}
-                            style={{ background: ACCENT_COLOR, border: "none", borderRadius: 8, padding: "6px 12px", color: "#fff", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12, cursor: "pointer", opacity: savingProjectEdit || !editProjectName.trim() ? 0.6 : 1 }}
+                            style={{ background: ACCENT_COLOR, border: "none", borderRadius: 8, padding: "6px 12px", color: "#fff", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 12, cursor: "pointer", opacity: savingProjectEdit || !editProjectName.trim() ? 0.6 : 1 }}
                           >
                             Save
                           </button>
                           <button
                             onClick={cancelEditProject}
-                            style={{ background: "#F3F0FC", border: "none", borderRadius: 8, padding: "6px 12px", color: "#6C5CE7", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12, cursor: "pointer" }}
+                            style={{ background: "#F3F0FC", border: "none", borderRadius: 8, padding: "6px 12px", color: "#6C5CE7", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 12, cursor: "pointer" }}
                           >
                             Cancel
                           </button>
@@ -1073,7 +1073,7 @@ export default function KanbanView() {
                       <button
                         onClick={() => completeProject(project.id)}
                         disabled={completingProjectId === project.id}
-                        style={{ background: "#2F9E63", border: "none", borderRadius: 8, padding: "7px 14px", color: "#fff", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", opacity: completingProjectId === project.id ? 0.6 : 1, flexShrink: 0 }}
+                        style={{ background: "#2F9E63", border: "none", borderRadius: 8, padding: "7px 14px", color: "#fff", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", opacity: completingProjectId === project.id ? 0.6 : 1, flexShrink: 0 }}
                       >
                         {completingProjectId === project.id ? "Completing..." : "Mark project complete"}
                       </button>
@@ -1143,7 +1143,7 @@ export default function KanbanView() {
                                   >
                                     ✕
                                   </button>
-                                  <div style={{ fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 14.5, margin: "0 22px 6px 0", color: "#332F45", overflowWrap: "anywhere" }}>{task.title}</div>
+                                  <div style={{ fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 14.5, margin: "0 22px 6px 0", color: "#332F45", overflowWrap: "anywhere" }}>{task.title}</div>
                                   {SHOW_DESCRIPTION_ON_CARD && task.description && (
                                     <div style={{ fontSize: 12.5, color: "#5C5570", marginBottom: 10, lineHeight: 1.4, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{task.description}</div>
                                   )}
@@ -1187,7 +1187,7 @@ export default function KanbanView() {
                             data-project-id={project.id}
                             data-column-id={col.id}
                             onClick={onAddTaskClick}
-                            style={{ width: "100%", marginTop: 10, background: "rgba(255,255,255,0.5)", border: "1.5px dashed #D6CDEF", color: "#8B84A0", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 13.5, padding: 12, borderRadius: 12, cursor: "pointer", textAlign: "center" }}
+                            style={{ width: "100%", marginTop: 10, background: "rgba(255,255,255,0.5)", border: "1.5px dashed #D6CDEF", color: "#8B84A0", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 13.5, padding: 12, borderRadius: 12, cursor: "pointer", textAlign: "center" }}
                           >
                             + Add task
                           </button>
@@ -1214,7 +1214,7 @@ export default function KanbanView() {
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
               <button
                 onClick={goToToday}
-                style={{ padding: "8px 16px", borderRadius: 100, border: `1px solid ${CAL.pillBorder}`, background: CAL.pill, color: CAL.ink, fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+                style={{ padding: "8px 16px", borderRadius: 100, border: `1px solid ${CAL.pillBorder}`, background: CAL.pill, color: CAL.ink, fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
               >
                 Today
               </button>
@@ -1238,13 +1238,13 @@ export default function KanbanView() {
               <div style={{ display: "flex", gap: 2, background: CAL.pill, border: `1px solid ${CAL.pillBorder}`, borderRadius: 100, padding: 4 }}>
                 <button
                   onClick={() => setCalendarViewMode("month")}
-                  style={{ padding: "7px 16px", borderRadius: 100, border: "none", background: calendarViewMode === "month" ? CAL.toggleActiveBg : "transparent", color: calendarViewMode === "month" ? CAL.toggleActiveText : CAL.muted, fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+                  style={{ padding: "7px 16px", borderRadius: 100, border: "none", background: calendarViewMode === "month" ? CAL.toggleActiveBg : "transparent", color: calendarViewMode === "month" ? CAL.toggleActiveText : CAL.muted, fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
                 >
                   Month
                 </button>
                 <button
                   onClick={() => setCalendarViewMode("week")}
-                  style={{ padding: "7px 16px", borderRadius: 100, border: "none", background: calendarViewMode === "week" ? CAL.toggleActiveBg : "transparent", color: calendarViewMode === "week" ? CAL.toggleActiveText : CAL.muted, fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+                  style={{ padding: "7px 16px", borderRadius: 100, border: "none", background: calendarViewMode === "week" ? CAL.toggleActiveBg : "transparent", color: calendarViewMode === "week" ? CAL.toggleActiveText : CAL.muted, fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
                 >
                   Week
                 </button>
@@ -1392,7 +1392,7 @@ export default function KanbanView() {
                     </div>
                     <button
                       onClick={() => reopenProject(project.id)}
-                      style={{ background: "#F3F0FC", border: "none", borderRadius: 10, padding: "8px 16px", color: "#6C5CE7", fontFamily: "'Nunito',sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", flexShrink: 0 }}
+                      style={{ background: "#F3F0FC", border: "none", borderRadius: 10, padding: "8px 16px", color: "#6C5CE7", fontFamily: "var(--font-app), sans-serif", fontWeight: 800, fontSize: 12.5, cursor: "pointer", flexShrink: 0 }}
                     >
                       Reopen project
                     </button>
@@ -1441,7 +1441,7 @@ export default function KanbanView() {
                   value={modalForm.title}
                   onChange={onFormChange}
                   placeholder="e.g. Design onboarding flow"
-                  style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 14.5, outline: "none" }}
+                  style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "var(--font-app), sans-serif", fontSize: 14.5, outline: "none" }}
                 />
               </div>
 
@@ -1452,7 +1452,7 @@ export default function KanbanView() {
                   name="dueDate"
                   value={modalForm.dueDate}
                   onChange={onFormChange}
-                  style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 14.5, outline: "none", color: "#332F45" }}
+                  style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "var(--font-app), sans-serif", fontSize: 14.5, outline: "none", color: "#332F45" }}
                 />
               </div>
 
@@ -1464,7 +1464,7 @@ export default function KanbanView() {
                   onChange={onFormChange}
                   placeholder="Add more detail..."
                   rows={4}
-                  style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 14.5, outline: "none", resize: "vertical" }}
+                  style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "var(--font-app), sans-serif", fontSize: 14.5, outline: "none", resize: "vertical" }}
                 />
               </div>
 
@@ -1475,7 +1475,7 @@ export default function KanbanView() {
                   value={modalForm.source}
                   onChange={onFormChange}
                   placeholder="Website URL or file path"
-                  style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 14.5, outline: "none" }}
+                  style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "var(--font-app), sans-serif", fontSize: 14.5, outline: "none" }}
                 />
               </div>
 
@@ -1486,7 +1486,7 @@ export default function KanbanView() {
                     name="priority"
                     value={modalForm.priority}
                     onChange={onFormChange}
-                    style={{ flex: 1, padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "'Nunito',sans-serif", fontSize: 14.5, outline: "none", background: "#fff" }}
+                    style={{ flex: 1, padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "var(--font-app), sans-serif", fontSize: 14.5, outline: "none", background: "#fff" }}
                   >
                     <option value="High">High 🔥</option>
                     <option value="Medium">Medium</option>

@@ -96,12 +96,12 @@ export default function SpendingChart({ transactions, mode = "category" }: Spend
         <CartesianGrid strokeDasharray="3 3" stroke="#f3e8ff" vertical={false} />
         <XAxis
           dataKey="label"
-          tick={{ fontSize: 10, fill: "#9ca3af", fontWeight: 700, fontFamily: "Nunito" }}
+          tick={{ fontSize: 10, fill: "#9ca3af", fontWeight: 700, fontFamily: "var(--font-app), sans-serif" }}
           tickLine={false}
           axisLine={false}
         />
         <YAxis
-          tick={{ fontSize: 10, fill: "#c4b5fd", fontWeight: 700, fontFamily: "Nunito" }}
+          tick={{ fontSize: 10, fill: "#c4b5fd", fontWeight: 700, fontFamily: "var(--font-app), sans-serif" }}
           tickLine={false}
           axisLine={false}
           tickFormatter={(v) => `฿${v}`}

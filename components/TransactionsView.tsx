@@ -214,7 +214,7 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="text-xs font-bold rounded-xl px-3 py-2 cursor-pointer outline-none"
-              style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+              style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "var(--font-app), sans-serif" }}
             >
               {months.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -227,7 +227,7 @@ export default function TransactionsView({ newTransaction, onAddTransaction }: T
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
               className="text-xs font-bold rounded-xl px-3 py-2 cursor-pointer outline-none"
-              style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "Nunito" }}
+              style={{ border: "2px solid #f3e8ff", color: "#374151", fontFamily: "var(--font-app), sans-serif" }}
             />
           )}
           {/* Category filter */}
