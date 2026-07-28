@@ -777,7 +777,7 @@ export default function KanbanView() {
             <rect x="12.5" y="1" width="4.5" height="13" rx="1.5" fill="#fff" fillOpacity="0.55" />
           </svg>
         </div>
-        <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 21 }}>
+        <span style={{ fontFamily: "var(--font-app), sans-serif", fontWeight: 700, fontSize: 21 }}>
           <span style={{ color: "#2D2B3A" }}>FamMan</span>
           <span style={{ color: "#C7C0DC", margin: "0 7px", fontWeight: 800 }}>×</span>
           <span style={{ color: ACCENT_COLOR, letterSpacing: "0.03em" }}>KANBAN</span>
@@ -974,7 +974,7 @@ export default function KanbanView() {
                             value={editProjectName}
                             onChange={e => setEditProjectName(e.target.value)}
                             onClick={e => e.stopPropagation()}
-                            style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #EAE5F7", fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 15, outline: "none" }}
+                            style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #EAE5F7", fontFamily: "var(--font-app), sans-serif", fontWeight: 700, fontSize: 15, outline: "none" }}
                           />
                           <input
                             value={editProjectDescription}
@@ -1012,7 +1012,7 @@ export default function KanbanView() {
                         </div>
                       ) : (
                         <div>
-                          <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 19 }}>{project.name}</div>
+                          <div style={{ fontFamily: "var(--font-app), sans-serif", fontWeight: 700, fontSize: 19 }}>{project.name}</div>
                           {isExpanded && project.description && (
                             <div style={{ fontSize: 13, color: "#9A93AC" }}>{project.description}</div>
                           )}
@@ -1103,7 +1103,7 @@ export default function KanbanView() {
                           style={{ flex: "0 0 280px", minWidth: 280, background: isOver ? "#F1EDFC" : "#F7F5FC", borderRadius: 16, padding: 14, transition: "background 0.15s", border: `2px dashed ${isOver ? ACCENT_COLOR : "transparent"}` }}
                         >
                           <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "4px 6px 12px", flexWrap: "wrap" }}>
-                            <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 14.5 }}>{col.label}</span>
+                            <span style={{ fontFamily: "var(--font-app), sans-serif", fontWeight: 700, fontSize: 14.5 }}>{col.label}</span>
                             <span style={{ background: "#EDE9F9", color: "#6C5CE7", fontSize: 11.5, fontWeight: 800, padding: "2px 8px", borderRadius: 100 }}>{tasks.length}</span>
                           </div>
 
@@ -1225,7 +1225,7 @@ export default function KanbanView() {
                 >
                   ‹
                 </button>
-                <span style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 15, minWidth: 150, textAlign: "center", color: CAL.ink }}>
+                <span style={{ fontFamily: "var(--font-app), sans-serif", fontWeight: 700, fontSize: 15, minWidth: 150, textAlign: "center", color: CAL.ink }}>
                   {calendarViewMode === "week" ? formatWeekRange(weekDays[0].date, weekDays[6].date) : `${MONTH_NAMES[calendarCursor.month]} ${calendarCursor.year}`}
                 </span>
                 <button
@@ -1325,7 +1325,7 @@ export default function KanbanView() {
           </div>
 
           <div style={{ width: 280, flexShrink: 0, background: "#FFFFFF", border: `1px solid ${CAL.border}`, borderRadius: 16, padding: "18px 16px", boxShadow: "0 1px 3px rgba(45,43,58,0.04)" }}>
-            <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 16, color: CAL.ink }}>Kanban</div>
+            <div style={{ fontFamily: "var(--font-app), sans-serif", fontWeight: 700, fontSize: 16, color: CAL.ink }}>Kanban</div>
             <div style={{ fontSize: 12, color: CAL.muted, marginBottom: 16 }}>Content in the period you're viewing</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               {periodTasksByColumn.map(col => (
@@ -1383,7 +1383,7 @@ export default function KanbanView() {
                         {project.icon ?? PROJECT_ICONS[0]}
                       </div>
                       <div>
-                        <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 19 }}>{project.name}</div>
+                        <div style={{ fontFamily: "var(--font-app), sans-serif", fontWeight: 700, fontSize: 19 }}>{project.name}</div>
                         {project.description && <div style={{ fontSize: 13, color: "#9A93AC" }}>{project.description}</div>}
                         <div style={{ fontSize: 11.5, color: "#2F9E63", fontWeight: 700, marginTop: 2 }}>
                           ✓ Completed {project.completed_at ? formatDayMonth(project.completed_at.slice(0, 10)) : ""}
@@ -1422,7 +1422,7 @@ export default function KanbanView() {
           <div style={{ position: "fixed", top: 0, right: 0, height: "100vh", width: 420, maxWidth: "92vw", background: "#fff", zIndex: 41, boxShadow: "-16px 0 48px rgba(45,43,58,0.16)", display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "24px 26px", borderBottom: "1px solid #F1EDFA" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ fontFamily: "'Baloo 2',sans-serif", fontWeight: 700, fontSize: 19 }}>{modal.mode === "edit" ? "Edit task" : "New task"}</div>
+                <div style={{ fontFamily: "var(--font-app), sans-serif", fontWeight: 700, fontSize: 19 }}>{modal.mode === "edit" ? "Edit task" : "New task"}</div>
                 <button onClick={closeModal} style={{ border: "none", background: "#F5F2FC", width: 30, height: 30, borderRadius: "50%", color: "#6b6480", fontSize: 14, cursor: "pointer" }}>✕</button>
               </div>
               {modalProject && (
