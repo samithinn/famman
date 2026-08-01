@@ -731,6 +731,9 @@ export default function KanbanView() {
     if (!tasksByDate[entry.task.due_date]) tasksByDate[entry.task.due_date] = [];
     tasksByDate[entry.task.due_date].push(entry);
   }
+  for (const key in tasksByDate) {
+    tasksByDate[key].sort((a, b) => Number(a.task.status === "Done") - Number(b.task.status === "Done"));
+  }
 
   const now = new Date();
   const todayStr = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
@@ -1110,7 +1113,8 @@ export default function KanbanView() {
                           <div style={{ display: "flex", flexDirection: "column", gap: cardGap }}>
                             {tasks.map(task => {
                               const meta = PRIORITY_META[task.priority] ?? PRIORITY_META.Medium;
-                              const urgent = isUrgent(task.due_date);
+                              const isDone = task.status === "Done";
+                              const urgent = !isDone && isUrgent(task.due_date);
                               return (
                                 <div
                                   key={task.id}
@@ -1175,7 +1179,9 @@ export default function KanbanView() {
                                     <span style={{ fontSize: 11.5, fontWeight: 700, color: urgent ? "#C0392B" : "#5C5570", background: "rgba(255,255,255,0.55)", padding: "3px 9px", borderRadius: 100, whiteSpace: "nowrap" }}>
                                       {formatDate(task.due_date)}
                                     </span>
-                                    <span style={{ fontSize: 11, fontWeight: 700, color: urgent ? "#C0392B" : "#5C5570", whiteSpace: "nowrap" }}>({daysLeftLabel(task.due_date)})</span>
+                                    {!isDone && (
+                                      <span style={{ fontSize: 11, fontWeight: 700, color: urgent ? "#C0392B" : "#5C5570", whiteSpace: "nowrap" }}>({daysLeftLabel(task.due_date)})</span>
+                                    )}
                                     <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 100, background: meta.bg, color: meta.fg, whiteSpace: "nowrap" }}>{priorityLabel(task.priority)}</span>
                                   </div>
                                 </div>
@@ -1288,7 +1294,8 @@ export default function KanbanView() {
                       )}
                     </div>
                     {dayTasks.slice(0, maxChips).map(({ project, task }) => {
-                      const chipColor = project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)];
+                      const isDone = task.status === "Done";
+                      const chipColor = isDone ? CAL.borderMuted : (project.color ?? PROJECT_HEADER_COLORS[colorIndexForId(project.id, PROJECT_HEADER_COLORS.length)]);
                       return (
                         <button
                           key={task.id}
@@ -1306,10 +1313,10 @@ export default function KanbanView() {
                             flexShrink: 0,
                           }}
                         >
-                          <div style={{ fontSize: 11, fontWeight: 700, color: "#332F45", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {task.title}
+                          <div style={{ fontSize: 11, fontWeight: 700, color: isDone ? CAL.muted : "#332F45", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {isDone ? "✅ " : ""}{task.title}
                           </div>
-                          <div style={{ fontSize: 9.5, fontWeight: 700, color: "#5C5570", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div style={{ fontSize: 9.5, fontWeight: 700, color: isDone ? CAL.muted : "#5C5570", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {project.icon ?? PROJECT_ICONS[0]} {project.name}
                           </div>
                         </button>
@@ -1454,6 +1461,11 @@ export default function KanbanView() {
                   onChange={onFormChange}
                   style={{ width: "100%", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #EAE5F7", fontFamily: "var(--font-app), sans-serif", fontSize: 14.5, outline: "none", color: "#332F45" }}
                 />
+                {modalForm.dueDate && modal.columnId !== "Done" && (
+                  <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: isUrgent(modalForm.dueDate) ? "#C0392B" : "#8B8698" }}>
+                    {daysLeftLabel(modalForm.dueDate)}
+                  </div>
+                )}
               </div>
 
               <div>
