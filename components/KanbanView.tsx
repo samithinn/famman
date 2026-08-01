@@ -746,7 +746,6 @@ export default function KanbanView() {
   }
 
   function onCalDayDragOver(e: React.DragEvent<HTMLDivElement>) {
-    if (!e.dataTransfer.types.includes("text/plain")) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = e.ctrlKey || e.metaKey ? "copy" : "move";
     const key = e.currentTarget.getAttribute("data-cal-key")!;
