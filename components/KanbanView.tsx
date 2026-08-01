@@ -199,6 +199,8 @@ export default function KanbanView() {
   const [taskDragOverId, setTaskDragOverId] = useState<string | null>(null);
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
   const [projectDragOverId, setProjectDragOverId] = useState<string | null>(null);
+  const [calDragOverKey, setCalDragOverKey] = useState<string | null>(null);
+  const [chipMenu, setChipMenu] = useState<{ x: number; y: number; projectId: string; taskId: string; dueDate: string | null } | null>(null);
 
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [modal, setModal] = useState<ModalState>({ open: false });
@@ -223,6 +225,15 @@ export default function KanbanView() {
   useEffect(() => {
     loadProjects();
   }, []);
+
+  useEffect(() => {
+    if (!chipMenu) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setChipMenu(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [chipMenu]);
 
   async function loadProjects() {
     setLoading(true);
@@ -459,6 +470,36 @@ export default function KanbanView() {
     setModalForm(prev => ({ ...prev, color }));
   }
 
+  async function createTaskCopy(
+    projectId: string,
+    payload: {
+      title: string;
+      description: string;
+      source: string;
+      due_date: string | null;
+      priority: "High" | "Medium" | "Low";
+      color: string | null;
+      status: string;
+    }
+  ) {
+    const project = projects.find(p => p.id === projectId);
+    const columnTasks = (project?.kanban_tasks ?? []).filter(t => t.status === payload.status);
+    const position = columnTasks.length ? Math.max(...columnTasks.map(t => t.position)) + 1 : 0;
+
+    const res = await fetch("/api/kanban/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: projectId, ...payload, position }),
+    });
+    if (!res.ok) {
+      setError("Failed to create task.");
+      return null;
+    }
+    const { task } = await res.json();
+    setProjects(prev => prev.map(p => (p.id === projectId ? { ...p, kanban_tasks: [...p.kanban_tasks, task] } : p)));
+    return task;
+  }
+
   async function saveTask() {
     if (!modal.open) return;
     const form = modalForm;
@@ -491,40 +532,73 @@ export default function KanbanView() {
         )
       );
     } else {
-      const project = projects.find(p => p.id === modal.projectId);
-      const columnTasks = (project?.kanban_tasks ?? []).filter(t => t.status === modal.columnId);
-      const position = columnTasks.length ? Math.max(...columnTasks.map(t => t.position)) + 1 : 0;
-
-      const res = await fetch("/api/kanban/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: modal.projectId,
-          title,
-          description: form.description,
-          source: form.source,
-          due_date: form.dueDate || null,
-          priority: form.priority,
-          status: modal.columnId,
-          color: form.color,
-          position,
-        }),
+      const created = await createTaskCopy(modal.projectId, {
+        title,
+        description: form.description,
+        source: form.source,
+        due_date: form.dueDate || null,
+        priority: form.priority,
+        color: form.color,
+        status: modal.columnId,
       });
-      if (!res.ok) {
-        setError("Failed to create task.");
-        return;
-      }
-      const { task } = await res.json();
-      setProjects(prev =>
-        prev.map(p => (p.id === modal.projectId ? { ...p, kanban_tasks: [...p.kanban_tasks, task] } : p))
-      );
+      if (!created) return;
     }
     setModal({ open: false });
+  }
+
+  async function duplicateFromModal() {
+    if (!modal.open) return;
+    const form = modalForm;
+    const created = await createTaskCopy(modal.projectId, {
+      title: form.title.trim() || "Untitled task",
+      description: form.description,
+      source: form.source,
+      due_date: form.dueDate || null,
+      priority: form.priority,
+      color: form.color,
+      status: "To do",
+    });
+    if (created) setModal({ open: false });
   }
 
   function deleteTaskFromModal() {
     if (!modal.open || !modal.taskId) return;
     confirmDeleteTask(modal.projectId, modal.taskId, () => setModal({ open: false }));
+  }
+
+  async function moveTaskToDate(projectId: string, taskId: string, newDate: string) {
+    const project = projects.find(p => p.id === projectId);
+    const task = project?.kanban_tasks.find(t => t.id === taskId);
+    if (!task || task.due_date === newDate) return;
+
+    setProjects(prev =>
+      prev.map(p =>
+        p.id === projectId
+          ? { ...p, kanban_tasks: p.kanban_tasks.map(t => (t.id === taskId ? { ...t, due_date: newDate } : t)) }
+          : p
+      )
+    );
+    const res = await fetch("/api/kanban/tasks", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: taskId, due_date: newDate }),
+    });
+    if (!res.ok) {
+      setError("Failed to move task.");
+      loadProjects();
+    }
+  }
+
+  async function duplicateTaskToDate(projectId: string, task: KanbanTask, newDate: string | null) {
+    await createTaskCopy(projectId, {
+      title: task.title,
+      description: task.description ?? "",
+      source: task.source ?? "",
+      due_date: newDate,
+      priority: task.priority,
+      color: task.color,
+      status: "To do",
+    });
   }
 
   function onCardDragStart(e: React.DragEvent<HTMLDivElement>) {
@@ -656,6 +730,72 @@ export default function KanbanView() {
       setError("Failed to reorder task.");
       loadProjects();
     }
+  }
+
+  function onCalChipDragStart(e: React.DragEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    const projectId = e.currentTarget.getAttribute("data-project-id")!;
+    const taskId = e.currentTarget.getAttribute("data-task-id")!;
+    e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "cal-task", projectId, taskId }));
+    e.dataTransfer.effectAllowed = "copyMove";
+  }
+
+  function onCalChipDragEnd() {
+    // Same lesson as onCardDragEnd: dragend always fires once, dragleave/drop don't.
+    setCalDragOverKey(null);
+  }
+
+  function onCalDayDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (!e.dataTransfer.types.includes("text/plain")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = e.ctrlKey || e.metaKey ? "copy" : "move";
+    const key = e.currentTarget.getAttribute("data-cal-key")!;
+    if (calDragOverKey !== key) setCalDragOverKey(key);
+  }
+
+  function onCalDayDragLeave() {
+    setCalDragOverKey(null);
+  }
+
+  async function onCalDayDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setCalDragOverKey(null);
+    const newDate = e.currentTarget.getAttribute("data-cal-key")!;
+    let payload: { kind: string; projectId: string; taskId: string } | null = null;
+    try {
+      payload = JSON.parse(e.dataTransfer.getData("text/plain"));
+    } catch {
+      payload = null;
+    }
+    if (!payload || payload.kind !== "cal-task") return;
+
+    const project = projects.find(p => p.id === payload!.projectId);
+    const task = project?.kanban_tasks.find(t => t.id === payload!.taskId);
+    if (!task) return;
+
+    if (e.ctrlKey || e.metaKey) {
+      await duplicateTaskToDate(payload.projectId, task, newDate);
+    } else {
+      await moveTaskToDate(payload.projectId, payload.taskId, newDate);
+    }
+  }
+
+  function onChipContextMenu(e: React.MouseEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    const projectId = e.currentTarget.getAttribute("data-project-id")!;
+    const taskId = e.currentTarget.getAttribute("data-task-id")!;
+    const project = projects.find(p => p.id === projectId);
+    const task = project?.kanban_tasks.find(t => t.id === taskId);
+    setChipMenu({ x: e.clientX, y: e.clientY, projectId, taskId, dueDate: task?.due_date ?? null });
+  }
+
+  function onChipKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+    if (modal.open || e.key !== "Delete") return;
+    e.preventDefault();
+    const projectId = e.currentTarget.getAttribute("data-project-id")!;
+    const taskId = e.currentTarget.getAttribute("data-task-id")!;
+    confirmDeleteTask(projectId, taskId);
   }
 
   function onProjectDragStart(e: React.DragEvent<HTMLDivElement>) {
@@ -1267,15 +1407,22 @@ export default function KanbanView() {
                 const dayTasks = tasksByDate[cell.key] ?? [];
                 const isToday = cell.key === todayStr;
                 const maxChips = calendarViewMode === "week" ? 6 : 3;
+                const isDropTarget = calDragOverKey === cell.key;
                 return (
                   <div
                     key={cell.key}
+                    data-cal-key={cell.key}
+                    onDragOver={onCalDayDragOver}
+                    onDragLeave={onCalDayDragLeave}
+                    onDrop={onCalDayDrop}
                     style={{
                       height: calendarViewMode === "week" ? 260 : 108,
                       borderRadius: 12,
                       padding: 8,
                       background: cell.inMonth ? "#FFFFFF" : CAL.borderMuted,
                       border: isToday ? `2px solid ${CAL.todayAccent}` : `1px solid ${CAL.border}`,
+                      outline: isDropTarget ? `2px dashed ${ACCENT_COLOR}` : "2px dashed transparent",
+                      outlineOffset: 2,
                       opacity: cell.inMonth ? 1 : 0.55,
                       display: "flex",
                       flexDirection: "column",
@@ -1299,8 +1446,15 @@ export default function KanbanView() {
                       return (
                         <button
                           key={task.id}
+                          data-project-id={project.id}
+                          data-task-id={task.id}
+                          draggable
+                          onDragStart={onCalChipDragStart}
+                          onDragEnd={onCalChipDragEnd}
+                          onContextMenu={onChipContextMenu}
+                          onKeyDown={onChipKeyDown}
                           onClick={() => openTaskEditor(project.id, task)}
-                          title={`${project.name}: ${task.title}`}
+                          title={`${project.name}: ${task.title} (drag to move, Ctrl+drag to duplicate, right-click for more)`}
                           style={{
                             display: "block",
                             textAlign: "left",
@@ -1308,7 +1462,7 @@ export default function KanbanView() {
                             border: "none",
                             borderRadius: 6,
                             padding: "3px 6px",
-                            cursor: "pointer",
+                            cursor: "grab",
                             width: "100%",
                             flexShrink: 0,
                           }}
@@ -1525,7 +1679,10 @@ export default function KanbanView() {
 
             <div style={{ padding: "20px 26px", borderTop: "1px solid #F1EDFA", display: "flex", gap: 10 }}>
               {modal.mode === "edit" && (
-                <button onClick={deleteTaskFromModal} style={{ padding: "12px 18px", borderRadius: 12, border: "none", background: "#FFF0EE", color: "#D64545", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>Delete</button>
+                <>
+                  <button onClick={deleteTaskFromModal} style={{ padding: "12px 18px", borderRadius: 12, border: "none", background: "#FFF0EE", color: "#D64545", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>Delete</button>
+                  <button onClick={duplicateFromModal} title="Creates a new task from the fields above (status reset to To do) — the original is left as saved, any unsaved edits here are not applied to it" style={{ padding: "12px 18px", borderRadius: 12, border: "none", background: "#F3F0FC", color: "#6C5CE7", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>Duplicate</button>
+                </>
               )}
               <div style={{ flex: 1 }} />
               <button onClick={closeModal} style={{ padding: "12px 18px", borderRadius: 12, border: "none", background: "#F3F0FC", color: "#6C5CE7", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>Cancel</button>
@@ -1535,6 +1692,51 @@ export default function KanbanView() {
         </>
         );
       })()}
+
+      {chipMenu && (
+        <>
+          <div onClick={() => setChipMenu(null)} onContextMenu={e => { e.preventDefault(); setChipMenu(null); }} style={{ position: "fixed", inset: 0, zIndex: 1400 }} />
+          <div
+            style={{
+              position: "fixed",
+              top: Math.min(chipMenu.y, window.innerHeight - 110),
+              left: Math.min(chipMenu.x, window.innerWidth - 170),
+              zIndex: 1401,
+              background: "#fff",
+              borderRadius: 12,
+              boxShadow: "0 8px 28px rgba(45,43,58,0.22)",
+              border: "1px solid #F1EDFA",
+              padding: 6,
+              minWidth: 150,
+              fontFamily: "var(--font-app), sans-serif",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+            }}
+          >
+            <button
+              onClick={() => {
+                const project = projects.find(p => p.id === chipMenu.projectId);
+                const task = project?.kanban_tasks.find(t => t.id === chipMenu.taskId);
+                if (task) duplicateTaskToDate(chipMenu.projectId, task, chipMenu.dueDate);
+                setChipMenu(null);
+              }}
+              style={{ textAlign: "left", padding: "9px 12px", borderRadius: 8, border: "none", background: "transparent", color: "#3D3552", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}
+            >
+              📋 Duplicate
+            </button>
+            <button
+              onClick={() => {
+                confirmDeleteTask(chipMenu.projectId, chipMenu.taskId);
+                setChipMenu(null);
+              }}
+              style={{ textAlign: "left", padding: "9px 12px", borderRadius: 8, border: "none", background: "transparent", color: "#D64545", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}
+            >
+              🗑️ Delete
+            </button>
+          </div>
+        </>
+      )}
 
       <ConfirmDialog
         open={!!confirmState}
