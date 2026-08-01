@@ -736,8 +736,13 @@ export default function KanbanView() {
     e.stopPropagation();
     const projectId = e.currentTarget.getAttribute("data-project-id")!;
     const taskId = e.currentTarget.getAttribute("data-task-id")!;
-    e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "cal-task", projectId, taskId }));
-    e.dataTransfer.effectAllowed = "copyMove";
+    // Decide duplicate-vs-move once, from the modifier state at the moment the
+    // drag begins — re-reading e.ctrlKey/metaKey later during dragover/drop is
+    // unreliable across browsers, since some negotiate the drag's copy/move
+    // effect at the OS level and won't let JS switch it mid-drag.
+    const duplicate = e.ctrlKey || e.metaKey;
+    e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "cal-task", projectId, taskId, duplicate }));
+    e.dataTransfer.effectAllowed = "move";
   }
 
   function onCalChipDragEnd() {
@@ -747,7 +752,6 @@ export default function KanbanView() {
 
   function onCalDayDragOver(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
-    e.dataTransfer.dropEffect = e.ctrlKey || e.metaKey ? "copy" : "move";
     const key = e.currentTarget.getAttribute("data-cal-key")!;
     if (calDragOverKey !== key) setCalDragOverKey(key);
   }
@@ -760,7 +764,7 @@ export default function KanbanView() {
     e.preventDefault();
     setCalDragOverKey(null);
     const newDate = e.currentTarget.getAttribute("data-cal-key")!;
-    let payload: { kind: string; projectId: string; taskId: string } | null = null;
+    let payload: { kind: string; projectId: string; taskId: string; duplicate: boolean } | null = null;
     try {
       payload = JSON.parse(e.dataTransfer.getData("text/plain"));
     } catch {
@@ -772,7 +776,7 @@ export default function KanbanView() {
     const task = project?.kanban_tasks.find(t => t.id === payload!.taskId);
     if (!task) return;
 
-    if (e.ctrlKey || e.metaKey) {
+    if (payload.duplicate) {
       await duplicateTaskToDate(payload.projectId, task, newDate);
     } else {
       await moveTaskToDate(payload.projectId, payload.taskId, newDate);
