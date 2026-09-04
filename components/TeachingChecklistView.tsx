@@ -193,6 +193,26 @@ export default function TeachingChecklistView() {
     } catch {}
   };
 
+  // Auto-advances a course to its next week once every task in its
+  // *current* week is done. Only ever moves forward, and only evaluates
+  // the course's own current week — checking off (or deleting) a task in
+  // a past/future week never touches this. Week 15 is never advanced past
+  // (no Week 16); "completed" is shown as a derived state instead (see
+  // WeekView) rather than a separately stored flag, so it can never drift
+  // out of sync with the actual task data.
+  const maybeAdvanceCourseWeek = (
+    semesterId: string,
+    courseId: string,
+    week: number,
+    resultingTasks: TeachingTask[]
+  ) => {
+    if (getCourseWeek(courseId) !== week) return;
+    if (week >= TOTAL_WEEKS) return;
+    if (resultingTasks.length === 0) return;
+    if (!resultingTasks.every(t => t.is_completed)) return;
+    updateCourseWeek(courseId, week + 1);
+  };
+
   const toggleTask = (semesterId: string, task: TeachingTask) => {
     const nextDone = !task.is_completed;
     const applyDone = (done: boolean) =>
@@ -206,6 +226,17 @@ export default function TeachingChecklistView() {
       }));
 
     applyDone(nextDone);
+
+    if (nextDone) {
+      const course = (matrixCache[semesterId] ?? []).find(c => c.id === task.course_id);
+      if (course) {
+        const resultingTasks = course.teaching_tasks
+          .filter(t => t.week_number === task.week_number)
+          .map(t => (t.id === task.id ? { ...t, is_completed: true } : t));
+        maybeAdvanceCourseWeek(semesterId, task.course_id, task.week_number, resultingTasks);
+      }
+    }
+
     fetch(`/api/teaching/tasks/${task.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -220,12 +251,17 @@ export default function TeachingChecklistView() {
       message: `Delete "${task.title}"? This cannot be undone.`,
       onConfirm: async () => {
         setConfirmState(null);
+        const course = (matrixCache[semesterId] ?? []).find(c => c.id === task.course_id);
         setMatrixCache(prev => ({
           ...prev,
           [semesterId]: (prev[semesterId] ?? []).map(c =>
             c.id !== task.course_id ? c : { ...c, teaching_tasks: c.teaching_tasks.filter(t => t.id !== task.id) }
           ),
         }));
+        if (course) {
+          const resultingTasks = course.teaching_tasks.filter(t => t.week_number === task.week_number && t.id !== task.id);
+          maybeAdvanceCourseWeek(semesterId, task.course_id, task.week_number, resultingTasks);
+        }
         await fetch(`/api/teaching/tasks/${task.id}`, { method: "DELETE" });
       },
     });
@@ -659,6 +695,11 @@ function WeekView({
           const pct = coursePercent(course, week);
           const key = addTaskKey(course.id, week);
           const isSaving = savingTaskKeys.has(key);
+          // Derived, not stored — a course is "completed" purely because it's
+          // sitting at Week 15 with everything checked off. If a task is later
+          // added/reopened in Week 15 this flips back on its own, no separate
+          // flag to fall out of sync.
+          const isCompleted = week === TOTAL_WEEKS && pct === 100;
           return (
             <div key={course.id} style={{ ...cardStyle, flex: 1, minWidth: 300, overflow: "hidden" }}>
               <div style={{ height: 5, background: course.color_theme }} />
@@ -668,7 +709,11 @@ function WeekView({
                     <div style={{ width: 9, height: 9, borderRadius: "50%", background: course.color_theme }} />
                     <div style={{ fontWeight: 700, fontSize: 16 }}>{course.code}</div>
                   </div>
-                  <div style={{ fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 20, background: tint(course.color_theme), color: course.color_theme }}>{pct}%</div>
+                  {isCompleted ? (
+                    <div style={{ fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 20, background: "#E4F6EC", color: "#1E9E5A" }}>🎉 Completed</div>
+                  ) : (
+                    <div style={{ fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 20, background: tint(course.color_theme), color: course.color_theme }}>{pct}%</div>
+                  )}
                 </div>
                 <div style={{ fontSize: 13, color: "#8A8F9C", marginBottom: 10, marginLeft: 17 }}>{course.title}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 16, marginLeft: 17 }}>
