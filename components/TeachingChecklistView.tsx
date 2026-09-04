@@ -125,15 +125,39 @@ export default function TeachingChecklistView() {
     return list;
   }, []);
 
+  // Remembers which week each semester was last viewed at, per browser —
+  // so reopening Teaching (or switching semesters) doesn't always dump the
+  // user back on Week 1.
+  const loadStoredWeek = (semesterId: string): number => {
+    if (typeof window === "undefined") return 1;
+    try {
+      const stored = window.localStorage.getItem(`teaching_week_${semesterId}`);
+      const n = stored ? parseInt(stored, 10) : NaN;
+      return Number.isInteger(n) && n >= 1 && n <= TOTAL_WEEKS ? n : 1;
+    } catch {
+      return 1;
+    }
+  };
+
   useEffect(() => {
     (async () => {
       setLoading(true);
       const sems = await fetchSemesters();
       const active = sems.find(s => s.is_active);
-      if (active) await fetchMatrix(active.id);
+      if (active) {
+        await fetchMatrix(active.id);
+        setCurrentWeek(loadStoredWeek(active.id));
+      }
       setLoading(false);
     })();
   }, [fetchSemesters, fetchMatrix]);
+
+  useEffect(() => {
+    if (!activeSemester) return;
+    try {
+      window.localStorage.setItem(`teaching_week_${activeSemester.id}`, String(currentWeek));
+    } catch {}
+  }, [currentWeek, activeSemester]);
 
   const toggleTask = (semesterId: string, task: TeachingTask) => {
     const nextDone = !task.is_completed;
@@ -590,7 +614,15 @@ function WeekView({
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FAF9F6", borderRadius: 10, padding: "8px 12px" }}>
             <button onClick={() => setCurrentWeek(w => Math.max(1, w - 1))} style={{ border: "none", background: "none", fontSize: 16, cursor: "pointer", color: "#4A4F5C" }}>‹</button>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>Week {currentWeek}</span>
+            <select
+              value={currentWeek}
+              onChange={e => setCurrentWeek(Number(e.target.value))}
+              style={{ fontWeight: 700, fontSize: 14, fontFamily: FONT, border: "none", background: "transparent", color: "#1A2033", cursor: "pointer" }}
+            >
+              {Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).map(w => (
+                <option key={w} value={w}>Week {w}</option>
+              ))}
+            </select>
             <button onClick={() => setCurrentWeek(w => Math.min(TOTAL_WEEKS, w + 1))} style={{ border: "none", background: "none", fontSize: 16, cursor: "pointer", color: "#4A4F5C" }}>›</button>
           </div>
         </div>
