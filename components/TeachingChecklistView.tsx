@@ -152,12 +152,20 @@ export default function TeachingChecklistView() {
     })();
   }, [fetchSemesters, fetchMatrix]);
 
-  useEffect(() => {
-    if (!activeSemester) return;
-    try {
-      window.localStorage.setItem(`teaching_week_${activeSemester.id}`, String(currentWeek));
-    } catch {}
-  }, [currentWeek, activeSemester]);
+  // Explicit setter for user-driven week changes (dropdown, arrows, Jump) —
+  // writes straight to localStorage at the moment of the change instead of
+  // via a currentWeek-watching effect, which raced with the mount-time
+  // restore above (the effect fired the instant activeSemester loaded,
+  // clobbering the stored week with the still-default 1 before the restore
+  // got a chance to read it back).
+  const updateWeek = (week: number) => {
+    setCurrentWeek(week);
+    if (activeSemester) {
+      try {
+        window.localStorage.setItem(`teaching_week_${activeSemester.id}`, String(week));
+      } catch {}
+    }
+  };
 
   const toggleTask = (semesterId: string, task: TeachingTask) => {
     const nextDone = !task.is_completed;
@@ -302,6 +310,7 @@ export default function TeachingChecklistView() {
     setSwitchingToId(semesterId);
     try {
       setSemesters(prev => prev.map(s => ({ ...s, is_active: s.id === semesterId })));
+      setCurrentWeek(loadStoredWeek(semesterId));
       if (!matrixCache[semesterId]) await fetchMatrix(semesterId);
       await fetch(`/api/teaching/semesters/${semesterId}/active`, { method: "PUT" });
     } finally {
@@ -318,7 +327,10 @@ export default function TeachingChecklistView() {
         if (!res.ok) return;
         const sems = await fetchSemesters();
         const active = sems.find(s => s.is_active);
-        if (active && !matrixCache[active.id]) await fetchMatrix(active.id);
+        if (active) {
+          setCurrentWeek(loadStoredWeek(active.id));
+          if (!matrixCache[active.id]) await fetchMatrix(active.id);
+        }
       },
     });
   };
@@ -329,7 +341,7 @@ export default function TeachingChecklistView() {
   };
 
   const jumpToWeek = (week: number) => {
-    setCurrentWeek(week);
+    updateWeek(week);
     setView("week");
   };
 
@@ -440,7 +452,7 @@ export default function TeachingChecklistView() {
               activeSemester={activeSemester}
               activeCourses={activeCourses}
               currentWeek={currentWeek}
-              setCurrentWeek={setCurrentWeek}
+              setCurrentWeek={updateWeek}
               newTaskInputs={newTaskInputs}
               setNewTaskInputs={setNewTaskInputs}
               addTaskKey={addTaskKey}
@@ -590,7 +602,7 @@ function WeekView({
   activeSemester: TeachingSemester;
   activeCourses: TeachingCourse[];
   currentWeek: number;
-  setCurrentWeek: React.Dispatch<React.SetStateAction<number>>;
+  setCurrentWeek: (week: number) => void;
   newTaskInputs: Record<string, string>;
   setNewTaskInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   addTaskKey: (courseId: string, week: number) => string;
@@ -613,7 +625,7 @@ function WeekView({
             <div style={{ fontSize: 13.5, color: "#8A8F9C", marginTop: 4 }}>Check off preparation items per course for this week.</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FAF9F6", borderRadius: 10, padding: "8px 12px" }}>
-            <button onClick={() => setCurrentWeek(w => Math.max(1, w - 1))} style={{ border: "none", background: "none", fontSize: 16, cursor: "pointer", color: "#4A4F5C" }}>‹</button>
+            <button onClick={() => setCurrentWeek(Math.max(1, currentWeek - 1))} style={{ border: "none", background: "none", fontSize: 16, cursor: "pointer", color: "#4A4F5C" }}>‹</button>
             <select
               value={currentWeek}
               onChange={e => setCurrentWeek(Number(e.target.value))}
@@ -623,7 +635,7 @@ function WeekView({
                 <option key={w} value={w}>Week {w}</option>
               ))}
             </select>
-            <button onClick={() => setCurrentWeek(w => Math.min(TOTAL_WEEKS, w + 1))} style={{ border: "none", background: "none", fontSize: 16, cursor: "pointer", color: "#4A4F5C" }}>›</button>
+            <button onClick={() => setCurrentWeek(Math.min(TOTAL_WEEKS, currentWeek + 1))} style={{ border: "none", background: "none", fontSize: 16, cursor: "pointer", color: "#4A4F5C" }}>›</button>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
