@@ -85,14 +85,32 @@ export default function TeachingChecklistView() {
   const [courseTitleInput, setCourseTitleInput] = useState("");
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
+  // Busy flags so a slow request (e.g. adding a course seeds 15 weekly
+  // tasks server-side) shows visible feedback and can't be re-triggered
+  // by an impatient double-click while it's still in flight.
+  const [savingSemester, setSavingSemester] = useState(false);
+  const [savingCourse, setSavingCourse] = useState(false);
+  const [savingTaskKeys, setSavingTaskKeys] = useState<Set<string>>(new Set());
+  const [switchingToId, setSwitchingToId] = useState<string | null>(null);
+  const [fetchingMatrixIds, setFetchingMatrixIds] = useState<Set<string>>(new Set());
+
   const activeSemester = semesters.find(s => s.is_active) ?? null;
   const activeCourses = activeSemester ? matrixCache[activeSemester.id] ?? [] : [];
 
   const fetchMatrix = useCallback(async (semesterId: string) => {
-    const res = await fetch(`/api/teaching/matrix?semesterId=${semesterId}`);
-    if (!res.ok) return;
-    const json = await res.json();
-    setMatrixCache(prev => ({ ...prev, [semesterId]: json.courses ?? [] }));
+    setFetchingMatrixIds(prev => new Set(prev).add(semesterId));
+    try {
+      const res = await fetch(`/api/teaching/matrix?semesterId=${semesterId}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      setMatrixCache(prev => ({ ...prev, [semesterId]: json.courses ?? [] }));
+    } finally {
+      setFetchingMatrixIds(prev => {
+        const next = new Set(prev);
+        next.delete(semesterId);
+        return next;
+      });
+    }
   }, []);
 
   const fetchSemesters = useCallback(async () => {
@@ -143,23 +161,33 @@ export default function TeachingChecklistView() {
 
   const submitAddTask = async (semesterId: string, courseId: string, week: number) => {
     const key = addTaskKey(courseId, week);
+    if (savingTaskKeys.has(key)) return;
     const title = (newTaskInputs[key] || "").trim();
     if (!title) return;
     setNewTaskInputs(prev => ({ ...prev, [key]: "" }));
+    setSavingTaskKeys(prev => new Set(prev).add(key));
 
-    const res = await fetch("/api/teaching/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ course_id: courseId, week_number: week, title }),
-    });
-    if (!res.ok) return;
-    const json = await res.json();
-    setMatrixCache(prev => ({
-      ...prev,
-      [semesterId]: (prev[semesterId] ?? []).map(c =>
-        c.id === courseId ? { ...c, teaching_tasks: [...c.teaching_tasks, json.task] } : c
-      ),
-    }));
+    try {
+      const res = await fetch("/api/teaching/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ course_id: courseId, week_number: week, title }),
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      setMatrixCache(prev => ({
+        ...prev,
+        [semesterId]: (prev[semesterId] ?? []).map(c =>
+          c.id === courseId ? { ...c, teaching_tasks: [...c.teaching_tasks, json.task] } : c
+        ),
+      }));
+    } finally {
+      setSavingTaskKeys(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
   };
 
   const openAddCourse = (semesterId: string) => {
@@ -169,21 +197,26 @@ export default function TeachingChecklistView() {
   };
 
   const submitAddCourse = async () => {
-    if (!courseModalSemesterId) return;
+    if (savingCourse || !courseModalSemesterId) return;
     const code = courseCodeInput.trim();
     const title = courseTitleInput.trim();
     if (!code || !title) return;
     const semesterId = courseModalSemesterId;
+    setSavingCourse(true);
 
-    const res = await fetch("/api/teaching/courses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ semester_id: semesterId, code, title }),
-    });
-    if (!res.ok) return;
-    const json = await res.json();
-    setMatrixCache(prev => ({ ...prev, [semesterId]: [...(prev[semesterId] ?? []), json.course] }));
-    setCourseModalSemesterId(null);
+    try {
+      const res = await fetch("/api/teaching/courses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ semester_id: semesterId, code, title }),
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      setMatrixCache(prev => ({ ...prev, [semesterId]: [...(prev[semesterId] ?? []), json.course] }));
+      setCourseModalSemesterId(null);
+    } finally {
+      setSavingCourse(false);
+    }
   };
 
   const removeCourse = (semesterId: string, courseId: string) => {
@@ -198,31 +231,42 @@ export default function TeachingChecklistView() {
   };
 
   const submitAddSemester = async () => {
+    if (savingSemester) return;
     const name = semesterNameInput.trim();
     if (!name) return;
+    setSavingSemester(true);
 
-    const res = await fetch("/api/teaching/semesters", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    if (!res.ok) return;
-    const json = await res.json();
-    const newSemester: TeachingSemester = json.semester;
-    setSemesters(prev => [newSemester, ...prev.map(s => (newSemester.is_active ? { ...s, is_active: false } : s))]);
-    setSemesterModalOpen(false);
-    setSemesterNameInput("");
-    if (newSemester.is_active) {
-      await fetchMatrix(newSemester.id);
-      setCurrentWeek(1);
+    try {
+      const res = await fetch("/api/teaching/semesters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      const newSemester: TeachingSemester = json.semester;
+      setSemesters(prev => [newSemester, ...prev.map(s => (newSemester.is_active ? { ...s, is_active: false } : s))]);
+      setSemesterModalOpen(false);
+      setSemesterNameInput("");
+      if (newSemester.is_active) {
+        await fetchMatrix(newSemester.id);
+        setCurrentWeek(1);
+      }
+    } finally {
+      setSavingSemester(false);
     }
   };
 
   const setActiveSemester = async (semesterId: string) => {
-    if (activeSemester?.id === semesterId) return;
-    setSemesters(prev => prev.map(s => ({ ...s, is_active: s.id === semesterId })));
-    if (!matrixCache[semesterId]) await fetchMatrix(semesterId);
-    await fetch(`/api/teaching/semesters/${semesterId}/active`, { method: "PUT" });
+    if (activeSemester?.id === semesterId || switchingToId) return;
+    setSwitchingToId(semesterId);
+    try {
+      setSemesters(prev => prev.map(s => ({ ...s, is_active: s.id === semesterId })));
+      if (!matrixCache[semesterId]) await fetchMatrix(semesterId);
+      await fetch(`/api/teaching/semesters/${semesterId}/active`, { method: "PUT" });
+    } finally {
+      setSwitchingToId(null);
+    }
   };
 
   const removeSemester = (semesterId: string) => {
@@ -335,10 +379,17 @@ export default function TeachingChecklistView() {
               <select
                 value={activeSemester.id}
                 onChange={e => setActiveSemester(e.target.value)}
-                style={{ border: "1px solid #EDEBE6", background: "#FAF9F6", padding: "10px 14px", borderRadius: 10, fontSize: 13.5, fontWeight: 600, color: "#1A2033", fontFamily: FONT }}
+                disabled={!!switchingToId}
+                style={{
+                  border: "1px solid #EDEBE6", background: "#FAF9F6", padding: "10px 14px", borderRadius: 10,
+                  fontSize: 13.5, fontWeight: 600, color: "#1A2033", fontFamily: FONT,
+                  opacity: switchingToId ? 0.6 : 1, cursor: switchingToId ? "wait" : "pointer",
+                }}
               >
                 {semesters.map(sem => (
-                  <option key={sem.id} value={sem.id}>{sem.name}{sem.is_active ? " (Current)" : ""}</option>
+                  <option key={sem.id} value={sem.id}>
+                    {sem.name}{sem.is_active ? " (Current)" : ""}{switchingToId === sem.id ? " — switching…" : ""}
+                  </option>
                 ))}
               </select>
             </div>
@@ -355,6 +406,7 @@ export default function TeachingChecklistView() {
               addTaskKey={addTaskKey}
               submitAddTask={submitAddTask}
               toggleTask={toggleTask}
+              savingTaskKeys={savingTaskKeys}
             />
           )}
 
@@ -371,6 +423,7 @@ export default function TeachingChecklistView() {
               toggleTask={toggleTask}
               openAddCourse={openAddCourse}
               removeCourse={removeCourse}
+              savingTaskKeys={savingTaskKeys}
             />
           )}
 
@@ -384,6 +437,8 @@ export default function TeachingChecklistView() {
               removeSemester={removeSemester}
               openAddCourse={openAddCourse}
               onNewSemester={() => setSemesterModalOpen(true)}
+              switchingToId={switchingToId}
+              fetchingMatrixIds={fetchingMatrixIds}
             />
           )}
         </>
@@ -400,9 +455,15 @@ export default function TeachingChecklistView() {
             value={semesterNameInput}
             onChange={e => setSemesterNameInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") submitAddSemester(); }}
-            style={{ ...inputStyle, marginBottom: 16 }}
+            disabled={savingSemester}
+            style={{ ...inputStyle, marginBottom: 16, opacity: savingSemester ? 0.6 : 1 }}
           />
-          <ModalActions onCancel={() => setSemesterModalOpen(false)} onConfirm={submitAddSemester} confirmLabel="Create" />
+          <ModalActions
+            onCancel={() => setSemesterModalOpen(false)}
+            onConfirm={submitAddSemester}
+            confirmLabel={savingSemester ? "Creating…" : "Create"}
+            busy={savingSemester}
+          />
         </ModalOverlay>
       )}
 
@@ -416,7 +477,8 @@ export default function TeachingChecklistView() {
             placeholder="Course code (e.g. EL101)"
             value={courseCodeInput}
             onChange={e => setCourseCodeInput(e.target.value)}
-            style={{ ...inputStyle, marginBottom: 10 }}
+            disabled={savingCourse}
+            style={{ ...inputStyle, marginBottom: 10, opacity: savingCourse ? 0.6 : 1 }}
           />
           <input
             type="text"
@@ -424,9 +486,15 @@ export default function TeachingChecklistView() {
             value={courseTitleInput}
             onChange={e => setCourseTitleInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") submitAddCourse(); }}
-            style={{ ...inputStyle, marginBottom: 16 }}
+            disabled={savingCourse}
+            style={{ ...inputStyle, marginBottom: 16, opacity: savingCourse ? 0.6 : 1 }}
           />
-          <ModalActions onCancel={() => setCourseModalSemesterId(null)} onConfirm={submitAddCourse} confirmLabel="Add" />
+          <ModalActions
+            onCancel={() => setCourseModalSemesterId(null)}
+            onConfirm={submitAddCourse}
+            confirmLabel={savingCourse ? "Adding…" : "Add"}
+            busy={savingCourse}
+          />
         </ModalOverlay>
       )}
 
@@ -453,13 +521,21 @@ function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClos
   );
 }
 
-function ModalActions({ onCancel, onConfirm, confirmLabel }: { onCancel: () => void; onConfirm: () => void; confirmLabel: string }) {
+function ModalActions({ onCancel, onConfirm, confirmLabel, busy }: { onCancel: () => void; onConfirm: () => void; confirmLabel: string; busy?: boolean }) {
   return (
     <div style={{ display: "flex", gap: 10 }}>
-      <button onClick={onCancel} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "1px solid #EDEBE6", background: "white", color: "#5B616E", fontFamily: FONT, fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>
+      <button
+        onClick={onCancel}
+        disabled={busy}
+        style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "1px solid #EDEBE6", background: "white", color: "#5B616E", fontFamily: FONT, fontWeight: 600, fontSize: 13.5, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1 }}
+      >
         Cancel
       </button>
-      <button onClick={onConfirm} style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", background: "#F0623D", color: "white", fontFamily: FONT, fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>
+      <button
+        onClick={onConfirm}
+        disabled={busy}
+        style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", background: "#F0623D", color: "white", fontFamily: FONT, fontWeight: 600, fontSize: 13.5, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.75 : 1 }}
+      >
         {confirmLabel}
       </button>
     </div>
@@ -467,7 +543,7 @@ function ModalActions({ onCancel, onConfirm, confirmLabel }: { onCancel: () => v
 }
 
 function WeekView({
-  activeSemester, activeCourses, currentWeek, setCurrentWeek, newTaskInputs, setNewTaskInputs, addTaskKey, submitAddTask, toggleTask,
+  activeSemester, activeCourses, currentWeek, setCurrentWeek, newTaskInputs, setNewTaskInputs, addTaskKey, submitAddTask, toggleTask, savingTaskKeys,
 }: {
   activeSemester: TeachingSemester;
   activeCourses: TeachingCourse[];
@@ -478,6 +554,7 @@ function WeekView({
   addTaskKey: (courseId: string, week: number) => string;
   submitAddTask: (semesterId: string, courseId: string, week: number) => void;
   toggleTask: (semesterId: string, task: TeachingTask) => void;
+  savingTaskKeys: Set<string>;
 }) {
   const weekTotalPct = weekTotalPercent(activeCourses, currentWeek);
   return (
@@ -512,6 +589,7 @@ function WeekView({
           const tasks = course.teaching_tasks.filter(t => t.week_number === currentWeek);
           const pct = coursePercent(course, currentWeek);
           const key = addTaskKey(course.id, currentWeek);
+          const isSaving = savingTaskKeys.has(key);
           return (
             <div key={course.id} style={{ ...cardStyle, flex: 1, minWidth: 300, overflow: "hidden" }}>
               <div style={{ height: 5, background: course.color_theme }} />
@@ -539,13 +617,15 @@ function WeekView({
                     value={newTaskInputs[key] || ""}
                     onChange={e => setNewTaskInputs(prev => ({ ...prev, [key]: e.target.value }))}
                     onKeyDown={e => { if (e.key === "Enter") submitAddTask(activeSemester.id, course.id, currentWeek); }}
-                    style={{ ...inputStyle, flex: 1 }}
+                    disabled={isSaving}
+                    style={{ ...inputStyle, flex: 1, opacity: isSaving ? 0.6 : 1 }}
                   />
                   <button
                     onClick={() => submitAddTask(activeSemester.id, course.id, currentWeek)}
-                    style={{ background: "#EFEDE8", color: "#5B616E", border: "none", padding: "9px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: FONT }}
+                    disabled={isSaving}
+                    style={{ background: "#EFEDE8", color: "#5B616E", border: "none", padding: "9px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: isSaving ? "not-allowed" : "pointer", fontFamily: FONT, opacity: isSaving ? 0.6 : 1 }}
                   >
-                    Add
+                    {isSaving ? "Adding…" : "Add"}
                   </button>
                 </div>
               </div>
@@ -558,7 +638,7 @@ function WeekView({
 }
 
 function MatrixView({
-  activeSemester, activeCourses, currentWeek, jumpToWeek, newTaskInputs, setNewTaskInputs, addTaskKey, submitAddTask, toggleTask, openAddCourse, removeCourse,
+  activeSemester, activeCourses, currentWeek, jumpToWeek, newTaskInputs, setNewTaskInputs, addTaskKey, submitAddTask, toggleTask, openAddCourse, removeCourse, savingTaskKeys,
 }: {
   activeSemester: TeachingSemester;
   activeCourses: TeachingCourse[];
@@ -571,6 +651,7 @@ function MatrixView({
   toggleTask: (semesterId: string, task: TeachingTask) => void;
   openAddCourse: (semesterId: string) => void;
   removeCourse: (semesterId: string, courseId: string) => void;
+  savingTaskKeys: Set<string>;
 }) {
   const courseCount = activeCourses.length;
   return (
@@ -627,6 +708,7 @@ function MatrixView({
                 {activeCourses.map(course => {
                   const tasks = course.teaching_tasks.filter(t => t.week_number === week);
                   const key = addTaskKey(course.id, week);
+                  const isSaving = savingTaskKeys.has(key);
                   return (
                     <div key={course.id} style={{ padding: "14px 18px", borderLeft: "1px solid #F1EFEA" }}>
                       {tasks.map(task => (
@@ -637,11 +719,12 @@ function MatrixView({
                       ))}
                       <input
                         type="text"
-                        placeholder="+ task"
+                        placeholder={isSaving ? "Adding…" : "+ task"}
                         value={newTaskInputs[key] || ""}
                         onChange={e => setNewTaskInputs(prev => ({ ...prev, [key]: e.target.value }))}
                         onKeyDown={e => { if (e.key === "Enter") submitAddTask(activeSemester.id, course.id, week); }}
-                        style={{ fontFamily: FONT, border: "none", background: "none", fontSize: 12.5, color: "#8A8F9C", width: "100%", padding: "2px 0" }}
+                        disabled={isSaving}
+                        style={{ fontFamily: FONT, border: "none", background: "none", fontSize: 12.5, color: "#8A8F9C", width: "100%", padding: "2px 0", opacity: isSaving ? 0.6 : 1 }}
                       />
                     </div>
                   );
@@ -656,7 +739,7 @@ function MatrixView({
 }
 
 function SemestersView({
-  semesters, matrixCache, expandedSemesterId, toggleExpandSemester, setActiveSemester, removeSemester, openAddCourse, onNewSemester,
+  semesters, matrixCache, expandedSemesterId, toggleExpandSemester, setActiveSemester, removeSemester, openAddCourse, onNewSemester, switchingToId, fetchingMatrixIds,
 }: {
   semesters: TeachingSemester[];
   matrixCache: Record<string, TeachingCourse[]>;
@@ -666,6 +749,8 @@ function SemestersView({
   removeSemester: (id: string) => void;
   openAddCourse: (semesterId: string) => void;
   onNewSemester: () => void;
+  switchingToId: string | null;
+  fetchingMatrixIds: Set<string>;
 }) {
   return (
     <div>
@@ -683,6 +768,7 @@ function SemestersView({
         {semesters.map(sem => {
           const expanded = expandedSemesterId === sem.id;
           const courses = matrixCache[sem.id] ?? [];
+          const isLoadingCourses = expanded && !matrixCache[sem.id] && fetchingMatrixIds.has(sem.id);
           return (
             <div key={sem.id} style={{ borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
               <div style={{ background: "#141C2E", padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -695,8 +781,16 @@ function SemestersView({
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   {!sem.is_active && (
-                    <button onClick={() => setActiveSemester(sem.id)} style={{ background: "#F0623D", color: "white", border: "none", padding: "7px 16px", borderRadius: 20, fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: FONT }}>
-                      Set Active
+                    <button
+                      onClick={() => setActiveSemester(sem.id)}
+                      disabled={!!switchingToId}
+                      style={{
+                        background: "#F0623D", color: "white", border: "none", padding: "7px 16px", borderRadius: 20,
+                        fontWeight: 600, fontSize: 12.5, fontFamily: FONT,
+                        cursor: switchingToId ? "not-allowed" : "pointer", opacity: switchingToId ? 0.6 : 1,
+                      }}
+                    >
+                      {switchingToId === sem.id ? "Switching…" : "Set Active"}
                     </button>
                   )}
                   <span onClick={() => removeSemester(sem.id)} style={{ color: "#5A6A8A", cursor: "pointer", fontSize: 14 }}>🗑</span>
@@ -705,35 +799,41 @@ function SemestersView({
 
               {expanded && (
                 <div style={{ background: "white", padding: 20 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 13, color: "#5B616E", fontWeight: 600 }}>Courses:</span>
-                    {courses.map(c => (
-                      <span key={c.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "#FAF9F6", border: "1px solid #EDEBE6", padding: "5px 12px", borderRadius: 20, fontSize: 12.5, fontWeight: 600 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color_theme }} />{c.code}
-                      </span>
-                    ))}
-                    <span onClick={() => openAddCourse(sem.id)} style={{ fontSize: 13, fontWeight: 600, color: "#F0623D", cursor: "pointer" }}>+ Add Course</span>
-                  </div>
+                  {isLoadingCourses ? (
+                    <div style={{ fontSize: 13, color: "#8A8F9C", padding: "8px 0" }}>Loading…</div>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 13, color: "#5B616E", fontWeight: 600 }}>Courses:</span>
+                        {courses.map(c => (
+                          <span key={c.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "#FAF9F6", border: "1px solid #EDEBE6", padding: "5px 12px", borderRadius: 20, fontSize: 12.5, fontWeight: 600 }}>
+                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color_theme }} />{c.code}
+                          </span>
+                        ))}
+                        <span onClick={() => openAddCourse(sem.id)} style={{ fontSize: 13, fontWeight: 600, color: "#F0623D", cursor: "pointer" }}>+ Add Course</span>
+                      </div>
 
-                  <div style={{ background: "#FAF9F6", borderRadius: 14, padding: 18 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: "#8A8F9C", marginBottom: 14 }}>15-WEEK COMPLETION OVERVIEW</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
-                      {Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).map(week => {
-                        const pct = weekTotalPercent(courses, week);
-                        return (
-                          <div key={week} style={{ background: "white", border: "1px solid #EDEBE6", borderRadius: 10, padding: "12px 14px" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                              <span style={{ fontSize: 12.5, fontWeight: 700 }}>Week {week}</span>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: "#F0623D" }}>{pct}%</span>
-                            </div>
-                            <div style={{ height: 5, background: "#EFEDE8", borderRadius: 4, overflow: "hidden" }}>
-                              <div style={{ height: "100%", width: `${pct}%`, background: "#F0623D", borderRadius: 4 }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                      <div style={{ background: "#FAF9F6", borderRadius: 14, padding: 18 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: "#8A8F9C", marginBottom: 14 }}>15-WEEK COMPLETION OVERVIEW</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
+                          {Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).map(week => {
+                            const pct = weekTotalPercent(courses, week);
+                            return (
+                              <div key={week} style={{ background: "white", border: "1px solid #EDEBE6", borderRadius: 10, padding: "12px 14px" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                                  <span style={{ fontSize: 12.5, fontWeight: 700 }}>Week {week}</span>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: "#F0623D" }}>{pct}%</span>
+                                </div>
+                                <div style={{ height: 5, background: "#EFEDE8", borderRadius: 4, overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${pct}%`, background: "#F0623D", borderRadius: 4 }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
