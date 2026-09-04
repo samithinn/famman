@@ -402,6 +402,68 @@ CREATE POLICY "users manage own kanban tasks"
   ON kanban_tasks FOR ALL TO authenticated
   USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
+-- ------------------------------------------------------------
+-- Teaching Weekly Checklist. Semester -> Course -> Task, 15
+-- fixed weeks per semester. user_id is denormalized onto
+-- teaching_courses and teaching_tasks (not just teaching_semesters)
+-- so RLS/ownership checks never need to join back to the parent,
+-- same pattern as Kanban above.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS teaching_semesters (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  is_active boolean NOT NULL DEFAULT false,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS teaching_semesters_user_idx ON teaching_semesters (user_id);
+
+ALTER TABLE teaching_semesters ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users manage own teaching semesters" ON teaching_semesters;
+CREATE POLICY "users manage own teaching semesters"
+  ON teaching_semesters FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS teaching_courses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  semester_id uuid NOT NULL REFERENCES teaching_semesters(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  code text NOT NULL,
+  title text NOT NULL,
+  color_theme text NOT NULL DEFAULT '#8B5CF6',
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS teaching_courses_semester_idx ON teaching_courses (semester_id);
+
+ALTER TABLE teaching_courses ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users manage own teaching courses" ON teaching_courses;
+CREATE POLICY "users manage own teaching courses"
+  ON teaching_courses FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS teaching_tasks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  course_id uuid NOT NULL REFERENCES teaching_courses(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  week_number int NOT NULL CHECK (week_number BETWEEN 1 AND 15),
+  title text NOT NULL,
+  is_completed boolean NOT NULL DEFAULT false,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS teaching_tasks_course_week_idx ON teaching_tasks (course_id, week_number);
+
+ALTER TABLE teaching_tasks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users manage own teaching tasks" ON teaching_tasks;
+CREATE POLICY "users manage own teaching tasks"
+  ON teaching_tasks FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
 INSERT INTO bot_settings (key, value) VALUES ('help_message',
 '📖 คำสั่งที่ใช้ได้ทั้งหมด
 ━━━━━━━━━━━━━

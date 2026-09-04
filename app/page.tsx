@@ -12,6 +12,7 @@ import AddTransactionModal from "@/components/AddTransactionModal";
 import { Transaction } from "@/lib/supabase";
 import SettingsView from "@/components/SettingsView";
 import KanbanView from "@/components/KanbanView";
+import TeachingChecklistView from "@/components/TeachingChecklistView";
 import { ThemeProvider } from "@/lib/ThemeContext";
 
 const BOTTOM_NAV: { label: string; view: View; icon: string }[] = [
@@ -19,10 +20,11 @@ const BOTTOM_NAV: { label: string; view: View; icon: string }[] = [
   { label: "Report",  view: "report",       icon: "📅" },
   { label: "Txns",    view: "transactions", icon: "💳" },
   { label: "Kanban",  view: "kanban",       icon: "🗂️" },
+  { label: "Teaching",view: "teaching",     icon: "📋" },
   { label: "Settings",view: "settings",     icon: "⚙️" },
 ];
 
-const VALID_VIEWS: View[] = ["dashboard", "transactions", "report", "kanban", "settings"];
+const VALID_VIEWS: View[] = ["dashboard", "transactions", "report", "kanban", "teaching", "settings"];
 
 function HomeContent() {
   const router = useRouter();
@@ -51,6 +53,8 @@ function HomeContent() {
         return <TransactionsView newTransaction={lastAdded} onAddTransaction={() => setShowModal(true)} />;
       case "kanban":
         return <KanbanView />;
+      case "teaching":
+        return <TeachingChecklistView />;
       case "settings":
         return <SettingsView />;
     }
