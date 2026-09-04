@@ -157,6 +157,22 @@ export default function TeachingChecklistView() {
     });
   };
 
+  const removeTask = (semesterId: string, task: TeachingTask) => {
+    setConfirmState({
+      message: `Delete "${task.title}"? This cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        setMatrixCache(prev => ({
+          ...prev,
+          [semesterId]: (prev[semesterId] ?? []).map(c =>
+            c.id !== task.course_id ? c : { ...c, teaching_tasks: c.teaching_tasks.filter(t => t.id !== task.id) }
+          ),
+        }));
+        await fetch(`/api/teaching/tasks/${task.id}`, { method: "DELETE" });
+      },
+    });
+  };
+
   const addTaskKey = (courseId: string, week: number) => `${courseId}_${week}`;
 
   const submitAddTask = async (semesterId: string, courseId: string, week: number) => {
@@ -406,6 +422,7 @@ export default function TeachingChecklistView() {
               addTaskKey={addTaskKey}
               submitAddTask={submitAddTask}
               toggleTask={toggleTask}
+              removeTask={removeTask}
               savingTaskKeys={savingTaskKeys}
             />
           )}
@@ -421,6 +438,7 @@ export default function TeachingChecklistView() {
               addTaskKey={addTaskKey}
               submitAddTask={submitAddTask}
               toggleTask={toggleTask}
+              removeTask={removeTask}
               openAddCourse={openAddCourse}
               removeCourse={removeCourse}
               savingTaskKeys={savingTaskKeys}
@@ -543,7 +561,7 @@ function ModalActions({ onCancel, onConfirm, confirmLabel, busy }: { onCancel: (
 }
 
 function WeekView({
-  activeSemester, activeCourses, currentWeek, setCurrentWeek, newTaskInputs, setNewTaskInputs, addTaskKey, submitAddTask, toggleTask, savingTaskKeys,
+  activeSemester, activeCourses, currentWeek, setCurrentWeek, newTaskInputs, setNewTaskInputs, addTaskKey, submitAddTask, toggleTask, removeTask, savingTaskKeys,
 }: {
   activeSemester: TeachingSemester;
   activeCourses: TeachingCourse[];
@@ -554,6 +572,7 @@ function WeekView({
   addTaskKey: (courseId: string, week: number) => string;
   submitAddTask: (semesterId: string, courseId: string, week: number) => void;
   toggleTask: (semesterId: string, task: TeachingTask) => void;
+  removeTask: (semesterId: string, task: TeachingTask) => void;
   savingTaskKeys: Set<string>;
 }) {
   const weekTotalPct = weekTotalPercent(activeCourses, currentWeek);
@@ -606,7 +625,14 @@ function WeekView({
                   {tasks.map(task => (
                     <label key={task.id} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
                       <input type="checkbox" checked={task.is_completed} onChange={() => toggleTask(activeSemester.id, task)} />
-                      <span style={task.is_completed ? { color: "#B7BAC2", textDecoration: "line-through" } : { color: "#1A2033" }}>{task.title}</span>
+                      <span style={{ flex: 1, ...(task.is_completed ? { color: "#B7BAC2", textDecoration: "line-through" } : { color: "#1A2033" }) }}>{task.title}</span>
+                      <span
+                        onClick={e => { e.preventDefault(); e.stopPropagation(); removeTask(activeSemester.id, task); }}
+                        title="Delete task"
+                        style={{ color: "#C7CAD1", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 2px" }}
+                      >
+                        ×
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -638,7 +664,7 @@ function WeekView({
 }
 
 function MatrixView({
-  activeSemester, activeCourses, currentWeek, jumpToWeek, newTaskInputs, setNewTaskInputs, addTaskKey, submitAddTask, toggleTask, openAddCourse, removeCourse, savingTaskKeys,
+  activeSemester, activeCourses, currentWeek, jumpToWeek, newTaskInputs, setNewTaskInputs, addTaskKey, submitAddTask, toggleTask, removeTask, openAddCourse, removeCourse, savingTaskKeys,
 }: {
   activeSemester: TeachingSemester;
   activeCourses: TeachingCourse[];
@@ -649,6 +675,7 @@ function MatrixView({
   addTaskKey: (courseId: string, week: number) => string;
   submitAddTask: (semesterId: string, courseId: string, week: number) => void;
   toggleTask: (semesterId: string, task: TeachingTask) => void;
+  removeTask: (semesterId: string, task: TeachingTask) => void;
   openAddCourse: (semesterId: string) => void;
   removeCourse: (semesterId: string, courseId: string) => void;
   savingTaskKeys: Set<string>;
@@ -714,7 +741,14 @@ function MatrixView({
                       {tasks.map(task => (
                         <label key={task.id} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: 6 }}>
                           <input type="checkbox" checked={task.is_completed} onChange={() => toggleTask(activeSemester.id, task)} />
-                          <span style={task.is_completed ? { color: "#B7BAC2", textDecoration: "line-through", fontSize: 13 } : { color: "#1A2033", fontSize: 13 }}>{task.title}</span>
+                          <span style={{ flex: 1, fontSize: 13, ...(task.is_completed ? { color: "#B7BAC2", textDecoration: "line-through" } : { color: "#1A2033" }) }}>{task.title}</span>
+                          <span
+                            onClick={e => { e.preventDefault(); e.stopPropagation(); removeTask(activeSemester.id, task); }}
+                            title="Delete task"
+                            style={{ color: "#C7CAD1", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 2px" }}
+                          >
+                            ×
+                          </span>
                         </label>
                       ))}
                       <input
