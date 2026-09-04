@@ -167,6 +167,32 @@ export default function TeachingChecklistView() {
     }
   };
 
+  // Per-course current week for the This Week dashboard — every course
+  // tracks its own week independently (a Week 5 course and a Week 3 course
+  // can both be "current" at once), unlike currentWeek above which is only
+  // used for Master Matrix's row highlighting.
+  const [courseWeeks, setCourseWeeks] = useState<Record<string, number>>({});
+
+  const loadStoredCourseWeek = (courseId: string): number => {
+    if (typeof window === "undefined") return 1;
+    try {
+      const stored = window.localStorage.getItem(`teaching_course_week_${courseId}`);
+      const n = stored ? parseInt(stored, 10) : NaN;
+      return Number.isInteger(n) && n >= 1 && n <= TOTAL_WEEKS ? n : 1;
+    } catch {
+      return 1;
+    }
+  };
+
+  const getCourseWeek = (courseId: string): number => courseWeeks[courseId] ?? loadStoredCourseWeek(courseId);
+
+  const updateCourseWeek = (courseId: string, week: number) => {
+    setCourseWeeks(prev => ({ ...prev, [courseId]: week }));
+    try {
+      window.localStorage.setItem(`teaching_course_week_${courseId}`, String(week));
+    } catch {}
+  };
+
   const toggleTask = (semesterId: string, task: TeachingTask) => {
     const nextDone = !task.is_completed;
     const applyDone = (done: boolean) =>
@@ -342,6 +368,10 @@ export default function TeachingChecklistView() {
 
   const jumpToWeek = (week: number) => {
     updateWeek(week);
+    // This Week no longer has one shared week, so "Jump" sets every course
+    // in the semester to the jumped-to week — otherwise landing back on
+    // This Week wouldn't visibly reflect the jump at all.
+    activeCourses.forEach(c => updateCourseWeek(c.id, week));
     setView("week");
   };
 
@@ -451,8 +481,8 @@ export default function TeachingChecklistView() {
             <WeekView
               activeSemester={activeSemester}
               activeCourses={activeCourses}
-              currentWeek={currentWeek}
-              setCurrentWeek={updateWeek}
+              getCourseWeek={getCourseWeek}
+              updateCourseWeek={updateCourseWeek}
               newTaskInputs={newTaskInputs}
               setNewTaskInputs={setNewTaskInputs}
               addTaskKey={addTaskKey}
@@ -597,12 +627,12 @@ function ModalActions({ onCancel, onConfirm, confirmLabel, busy }: { onCancel: (
 }
 
 function WeekView({
-  activeSemester, activeCourses, currentWeek, setCurrentWeek, newTaskInputs, setNewTaskInputs, addTaskKey, submitAddTask, toggleTask, removeTask, savingTaskKeys,
+  activeSemester, activeCourses, getCourseWeek, updateCourseWeek, newTaskInputs, setNewTaskInputs, addTaskKey, submitAddTask, toggleTask, removeTask, savingTaskKeys,
 }: {
   activeSemester: TeachingSemester;
   activeCourses: TeachingCourse[];
-  currentWeek: number;
-  setCurrentWeek: (week: number) => void;
+  getCourseWeek: (courseId: string) => number;
+  updateCourseWeek: (courseId: string, week: number) => void;
   newTaskInputs: Record<string, string>;
   setNewTaskInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   addTaskKey: (courseId: string, week: number) => string;
@@ -611,47 +641,23 @@ function WeekView({
   removeTask: (semesterId: string, task: TeachingTask) => void;
   savingTaskKeys: Set<string>;
 }) {
-  const weekTotalPct = weekTotalPercent(activeCourses, currentWeek);
   return (
     <div>
       <div style={{ ...cardStyle, padding: 22, marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-              <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#1E9E5A" }} />
-              <span style={{ fontSize: 13, color: "#5B616E", fontWeight: 600 }}>Day-to-Day Teaching Checklist</span>
-            </div>
-            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "0.01em" }}>THIS WEEK — Week {currentWeek}</div>
-            <div style={{ fontSize: 13.5, color: "#8A8F9C", marginTop: 4 }}>Check off preparation items per course for this week.</div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#FAF9F6", borderRadius: 10, padding: "8px 12px" }}>
-            <button onClick={() => setCurrentWeek(Math.max(1, currentWeek - 1))} style={{ border: "none", background: "none", fontSize: 16, cursor: "pointer", color: "#4A4F5C" }}>‹</button>
-            <select
-              value={currentWeek}
-              onChange={e => setCurrentWeek(Number(e.target.value))}
-              style={{ fontWeight: 700, fontSize: 14, fontFamily: FONT, border: "none", background: "transparent", color: "#1A2033", cursor: "pointer" }}
-            >
-              {Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).map(w => (
-                <option key={w} value={w}>Week {w}</option>
-              ))}
-            </select>
-            <button onClick={() => setCurrentWeek(Math.min(TOTAL_WEEKS, currentWeek + 1))} style={{ border: "none", background: "none", fontSize: 16, cursor: "pointer", color: "#4A4F5C" }}>›</button>
-          </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#1E9E5A" }} />
+          <span style={{ fontSize: 13, color: "#5B616E", fontWeight: 600 }}>Day-to-Day Teaching Checklist</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: "#5B616E" }}>Week {currentWeek} Total Preparation</span>
-          <span style={{ fontSize: 13.5, fontWeight: 700, color: "#F0623D" }}>{weekTotalPct}% Completed</span>
-        </div>
-        <div style={{ height: 9, borderRadius: 6, background: "#EFEDE8", overflow: "hidden" }}>
-          <div style={{ height: "100%", borderRadius: 6, width: `${weekTotalPct}%`, background: "linear-gradient(90deg,#F0623D,#F5B942,#3FBE7A)" }} />
-        </div>
+        <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "0.01em" }}>THIS WEEK</div>
+        <div style={{ fontSize: 13.5, color: "#8A8F9C", marginTop: 4 }}>Each course tracks its own current week — adjust it independently on its card below.</div>
       </div>
 
       <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
         {activeCourses.map(course => {
-          const tasks = course.teaching_tasks.filter(t => t.week_number === currentWeek);
-          const pct = coursePercent(course, currentWeek);
-          const key = addTaskKey(course.id, currentWeek);
+          const week = getCourseWeek(course.id);
+          const tasks = course.teaching_tasks.filter(t => t.week_number === week);
+          const pct = coursePercent(course, week);
+          const key = addTaskKey(course.id, week);
           const isSaving = savingTaskKeys.has(key);
           return (
             <div key={course.id} style={{ ...cardStyle, flex: 1, minWidth: 300, overflow: "hidden" }}>
@@ -664,7 +670,20 @@ function WeekView({
                   </div>
                   <div style={{ fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 20, background: tint(course.color_theme), color: course.color_theme }}>{pct}%</div>
                 </div>
-                <div style={{ fontSize: 13, color: "#8A8F9C", marginBottom: 16, marginLeft: 17 }}>{course.title}</div>
+                <div style={{ fontSize: 13, color: "#8A8F9C", marginBottom: 10, marginLeft: 17 }}>{course.title}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 16, marginLeft: 17 }}>
+                  <button onClick={() => updateCourseWeek(course.id, Math.max(1, week - 1))} style={{ border: "none", background: "#FAF9F6", borderRadius: 6, width: 22, height: 22, fontSize: 13, cursor: "pointer", color: "#4A4F5C" }}>‹</button>
+                  <select
+                    value={week}
+                    onChange={e => updateCourseWeek(course.id, Number(e.target.value))}
+                    style={{ fontWeight: 700, fontSize: 13, fontFamily: FONT, border: "1px solid #EDEBE6", background: "#FAF9F6", borderRadius: 6, padding: "3px 6px", color: "#1A2033", cursor: "pointer" }}
+                  >
+                    {Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).map(w => (
+                      <option key={w} value={w}>Week {w}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => updateCourseWeek(course.id, Math.min(TOTAL_WEEKS, week + 1))} style={{ border: "none", background: "#FAF9F6", borderRadius: 6, width: 22, height: 22, fontSize: 13, cursor: "pointer", color: "#4A4F5C" }}>›</button>
+                </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 11, marginBottom: 18, minHeight: 20 }}>
                   {tasks.map(task => (
                     <label key={task.id} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
@@ -686,12 +705,12 @@ function WeekView({
                     placeholder="+ Add task (e.g. Prepare Quiz)"
                     value={newTaskInputs[key] || ""}
                     onChange={e => setNewTaskInputs(prev => ({ ...prev, [key]: e.target.value }))}
-                    onKeyDown={e => { if (e.key === "Enter") submitAddTask(activeSemester.id, course.id, currentWeek); }}
+                    onKeyDown={e => { if (e.key === "Enter") submitAddTask(activeSemester.id, course.id, week); }}
                     disabled={isSaving}
                     style={{ ...inputStyle, flex: 1, opacity: isSaving ? 0.6 : 1 }}
                   />
                   <button
-                    onClick={() => submitAddTask(activeSemester.id, course.id, currentWeek)}
+                    onClick={() => submitAddTask(activeSemester.id, course.id, week)}
                     disabled={isSaving}
                     style={{ background: "#EFEDE8", color: "#5B616E", border: "none", padding: "9px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: isSaving ? "not-allowed" : "pointer", fontFamily: FONT, opacity: isSaving ? 0.6 : 1 }}
                   >
