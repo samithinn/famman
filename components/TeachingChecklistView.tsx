@@ -53,6 +53,18 @@ function weekTotalPercent(courses: TeachingCourse[], week: number) {
   return total ? Math.round((done / total) * 100) : 0;
 }
 
+// A course's "current week" is derived purely from its task data: the
+// earliest week that still has an incomplete task. Weeks with no tasks at
+// all are skipped (never "current"). Once every week is fully checked off,
+// this settles on the last week rather than an out-of-range Week 16.
+function earliestIncompleteWeek(course: TeachingCourse): number {
+  for (let w = 1; w <= TOTAL_WEEKS; w++) {
+    const tasks = course.teaching_tasks.filter(t => t.week_number === w);
+    if (tasks.length > 0 && tasks.some(t => !t.is_completed)) return w;
+  }
+  return TOTAL_WEEKS;
+}
+
 const cardStyle: React.CSSProperties = {
   background: "white",
   borderRadius: 16,
@@ -171,46 +183,24 @@ export default function TeachingChecklistView() {
   // tracks its own week independently (a Week 5 course and a Week 3 course
   // can both be "current" at once), unlike currentWeek above which is only
   // used for Master Matrix's row highlighting.
+  //
+  // The default (no entry here) is always derived live from task data via
+  // earliestIncompleteWeek — so it stays automatically correct as tasks are
+  // checked/unchecked anywhere (This Week or Master Matrix), including
+  // moving backward if a past week's task is reopened. An entry here only
+  // exists while the user is manually browsing a different week with the
+  // ‹ › arrows/dropdown or "Jump"; it's session-only (not persisted), so
+  // reopening/reloading the page always lands back on the auto-derived week.
   const [courseWeeks, setCourseWeeks] = useState<Record<string, number>>({});
 
-  const loadStoredCourseWeek = (courseId: string): number => {
-    if (typeof window === "undefined") return 1;
-    try {
-      const stored = window.localStorage.getItem(`teaching_course_week_${courseId}`);
-      const n = stored ? parseInt(stored, 10) : NaN;
-      return Number.isInteger(n) && n >= 1 && n <= TOTAL_WEEKS ? n : 1;
-    } catch {
-      return 1;
-    }
+  const getCourseWeek = (courseId: string): number => {
+    if (courseId in courseWeeks) return courseWeeks[courseId];
+    const course = activeCourses.find(c => c.id === courseId);
+    return course ? earliestIncompleteWeek(course) : 1;
   };
-
-  const getCourseWeek = (courseId: string): number => courseWeeks[courseId] ?? loadStoredCourseWeek(courseId);
 
   const updateCourseWeek = (courseId: string, week: number) => {
     setCourseWeeks(prev => ({ ...prev, [courseId]: week }));
-    try {
-      window.localStorage.setItem(`teaching_course_week_${courseId}`, String(week));
-    } catch {}
-  };
-
-  // Auto-advances a course to its next week once every task in its
-  // *current* week is done. Only ever moves forward, and only evaluates
-  // the course's own current week — checking off (or deleting) a task in
-  // a past/future week never touches this. Week 15 is never advanced past
-  // (no Week 16); "completed" is shown as a derived state instead (see
-  // WeekView) rather than a separately stored flag, so it can never drift
-  // out of sync with the actual task data.
-  const maybeAdvanceCourseWeek = (
-    semesterId: string,
-    courseId: string,
-    week: number,
-    resultingTasks: TeachingTask[]
-  ) => {
-    if (getCourseWeek(courseId) !== week) return;
-    if (week >= TOTAL_WEEKS) return;
-    if (resultingTasks.length === 0) return;
-    if (!resultingTasks.every(t => t.is_completed)) return;
-    updateCourseWeek(courseId, week + 1);
   };
 
   const toggleTask = (semesterId: string, task: TeachingTask) => {
@@ -227,16 +217,6 @@ export default function TeachingChecklistView() {
 
     applyDone(nextDone);
 
-    if (nextDone) {
-      const course = (matrixCache[semesterId] ?? []).find(c => c.id === task.course_id);
-      if (course) {
-        const resultingTasks = course.teaching_tasks
-          .filter(t => t.week_number === task.week_number)
-          .map(t => (t.id === task.id ? { ...t, is_completed: true } : t));
-        maybeAdvanceCourseWeek(semesterId, task.course_id, task.week_number, resultingTasks);
-      }
-    }
-
     fetch(`/api/teaching/tasks/${task.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -251,17 +231,12 @@ export default function TeachingChecklistView() {
       message: `Delete "${task.title}"? This cannot be undone.`,
       onConfirm: async () => {
         setConfirmState(null);
-        const course = (matrixCache[semesterId] ?? []).find(c => c.id === task.course_id);
         setMatrixCache(prev => ({
           ...prev,
           [semesterId]: (prev[semesterId] ?? []).map(c =>
             c.id !== task.course_id ? c : { ...c, teaching_tasks: c.teaching_tasks.filter(t => t.id !== task.id) }
           ),
         }));
-        if (course) {
-          const resultingTasks = course.teaching_tasks.filter(t => t.week_number === task.week_number && t.id !== task.id);
-          maybeAdvanceCourseWeek(semesterId, task.course_id, task.week_number, resultingTasks);
-        }
         await fetch(`/api/teaching/tasks/${task.id}`, { method: "DELETE" });
       },
     });
